@@ -102,7 +102,7 @@ local ThemeManager = {} do
 		end
 		table.sort(FontValues)
 
-		-- Font selector
+		groupbox:AddLabel('Font')
 		groupbox:AddDropdown('Font', { Text = 'Font', Values = FontValues, Default = table.find(FontValues, self.Library.Font.Name) or 1 })
 
 		local ThemesArray = {}
