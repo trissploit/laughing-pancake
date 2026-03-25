@@ -189,6 +189,71 @@ function Library:MakeDraggable(Instance, Cutoff)
     end)
 end;
 
+function Library:MakeResizable(UI, DragFrame, Callback)
+    local StartPos
+    local FrameSize
+    local Dragging = false
+    local Changed
+    local _resizeDeferred = false
+
+    DragFrame.InputBegan:Connect(function(Input)
+        if Input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+            return
+        end
+
+        StartPos = InputService:GetMouseLocation()
+        FrameSize = UI.Size
+        Dragging = true
+
+        Changed = Input.Changed:Connect(function()
+            if Input.UserInputState ~= Enum.UserInputState.End then
+                return
+            end
+
+            Dragging = false
+
+            if Changed and Changed.Connected then
+                Changed:Disconnect()
+                Changed = nil
+            end
+
+            if Callback then
+                _resizeDeferred = false
+                Library:SafeCallback(Callback)
+            end
+        end)
+    end)
+
+    Library:GiveSignal(InputService.InputChanged:Connect(function(Input)
+        if not UI.Visible or not (ScreenGui and ScreenGui.Parent) then
+            Dragging = false
+            if Changed and Changed.Connected then
+                Changed:Disconnect()
+                Changed = nil
+            end
+            return
+        end
+    end))
+
+    Library:GiveSignal(RenderStepped:Connect(function()
+        if Dragging and UI.Visible and (ScreenGui and ScreenGui.Parent) then
+            local Delta = InputService:GetMouseLocation() - StartPos
+            local NewX = math.clamp(FrameSize.X.Offset + Delta.X, 100, math.huge)
+            local NewY = math.clamp(FrameSize.Y.Offset + Delta.Y, 100, math.huge)
+
+            UI.Size = UDim2.new(FrameSize.X.Scale, NewX, FrameSize.Y.Scale, NewY)
+
+            if Callback and not _resizeDeferred then
+                _resizeDeferred = true
+                task.defer(function()
+                    _resizeDeferred = false
+                    Library:SafeCallback(Callback)
+                end)
+            end
+        end
+    end))
+end;
+
 function Library:AddToolTip(InfoStr, HoverInstance)
     local X, Y = Library:GetTextBounds(InfoStr, Library.Font, 14);
     local Tooltip = Library:Create('Frame', {
@@ -2992,6 +3057,27 @@ function Library:CreateWindow(...)
 
     Library:MakeDraggable(Outer, 25);
 
+    local ResizeGrip = Library:Create('Frame', {
+        AnchorPoint = Vector2.new(1, 1);
+        Position = UDim2.new(1, -2, 1, -2);
+        Size = UDim2.new(0, 12, 0, 12);
+        BackgroundColor3 = Library.OutlineColor;
+        BorderColor3 = Library.AccentColor;
+        BorderSizePixel = 1;
+        ZIndex = 3;
+        Parent = Outer;
+        Active = true;
+    });
+
+    Library:AddToRegistry(ResizeGrip, {
+        BackgroundColor3 = 'OutlineColor';
+        BorderColor3 = 'AccentColor';
+    });
+
+    Library:MakeResizable(Outer, ResizeGrip, function()
+        Window:UpdateTabButtonSizes();
+    end);
+
     local Inner = Library:Create('Frame', {
         BackgroundColor3 = Library.MainColor;
         BorderColor3 = Library.AccentColor;
@@ -3074,62 +3160,24 @@ function Library:CreateWindow(...)
         BorderColor3 = 'OutlineColor';
     });
 
-    local Resizing = false
-    local ResizeStartMouse = Vector2.new(0, 0)
-    local ResizeStartSize = Vector2.new(0, 0)
-
-    local ResizeGrip = Library:Create('Frame', {
-        AnchorPoint = Vector2.new(1, 1);
-        Position = UDim2.new(1, -4, 1, -4);
-        Size = UDim2.new(0, 16, 0, 16);
-        BackgroundColor3 = Library.OutlineColor;
-        BorderColor3 = Library.MainColor;
-        BorderSizePixel = 1;
-        ZIndex = 20;
-        Parent = Outer;
-    });
-
-    local ResizeGripCorner = Library:Create('ImageLabel', {
-        BackgroundTransparency = 1;
-        Image = 'rbxassetid://7072715336'; -- diagonal grip pattern (fallback)
-        ScaleType = Enum.ScaleType.Fit;
-        Size = UDim2.new(1, 0, 1, 0);
-        ZIndex = 21;
-        Parent = ResizeGrip;
-    });
-
-    ResizeGrip.InputBegan:Connect(function(Input)
-        if Input.UserInputType == Enum.UserInputType.MouseButton1 then
-            Resizing = true
-            ResizeStartMouse = Vector2.new(Mouse.X, Mouse.Y)
-            ResizeStartSize = Outer.AbsoluteSize
-            Input.Changed:Connect(function()
-                if Input.UserInputState == Enum.UserInputState.End then
-                    Resizing = false
-                end
-            end)
+    function Window:UpdateTabButtonSizes()
+        local tabCount = 0
+        for _, _ in next, Window.Tabs do
+            tabCount = tabCount + 1
         end
-    end)
 
-    InputService.InputChanged:Connect(function(Input)
-        if not Resizing or Input.UserInputType ~= Enum.UserInputType.MouseMovement then
+        if tabCount == 0 then
             return
         end
 
-        local CurrentMouse = Vector2.new(Mouse.X, Mouse.Y)
-        local Delta = CurrentMouse - ResizeStartMouse
+        local widthScale = 1 / tabCount
 
-        local NewWidth = math.max(300, ResizeStartSize.X + Delta.X)
-        local NewHeight = math.max(240, ResizeStartSize.Y + Delta.Y)
-
-        Outer.Size = UDim2.new(0, NewWidth, 0, NewHeight)
-    end)
-
-    InputService.InputEnded:Connect(function(Input)
-        if Input.UserInputType == Enum.UserInputType.MouseButton1 then
-            Resizing = false
+        for _, tab in next, Window.Tabs do
+            if tab.TabButton then
+                tab.TabButton.Size = UDim2.new(widthScale, 0, 1, 0)
+            end
         end
-    end)
+    end
 
     function Window:SetWindowTitle(Title)
         WindowLabel.Text = Title;
@@ -3141,6 +3189,7 @@ function Library:CreateWindow(...)
             Tabboxes = {};
         };
 
+        -- tab widths are managed by UpdateTabButtonSizes for uniform fill
         local TabButton = Library:Create('Frame', {
             BackgroundColor3 = Library.BackgroundColor;
             BorderColor3 = Library.OutlineColor;
@@ -3189,8 +3238,8 @@ function Library:CreateWindow(...)
         local LeftSide = Library:Create('ScrollingFrame', {
             BackgroundTransparency = 1;
             BorderSizePixel = 0;
-            Position = UDim2.new(0, 8 - 1, 0, 8 - 1);
-            Size = UDim2.new(0.5, -12 + 2, 0, 507 + 2);
+            Position = UDim2.new(0, 7, 0, 7);
+            Size = UDim2.new(0.5, -10, 1, -14);
             CanvasSize = UDim2.new(0, 0, 0, 0);
             BottomImage = '';
             TopImage = '';
@@ -3202,8 +3251,8 @@ function Library:CreateWindow(...)
         local RightSide = Library:Create('ScrollingFrame', {
             BackgroundTransparency = 1;
             BorderSizePixel = 0;
-            Position = UDim2.new(0.5, 4 + 1, 0, 8 - 1);
-            Size = UDim2.new(0.5, -12 + 2, 0, 507 + 2);
+            Position = UDim2.new(0.5, 5, 0, 7);
+            Size = UDim2.new(0.5, -10, 1, -14);
             CanvasSize = UDim2.new(0, 0, 0, 0);
             BottomImage = '';
             TopImage = '';
@@ -3264,7 +3313,7 @@ function Library:CreateWindow(...)
                 BackgroundColor3 = Library.BackgroundColor;
                 BorderColor3 = Library.OutlineColor;
                 BorderMode = Enum.BorderMode.Inset;
-                Size = UDim2.new(1, 0, 0, 507 + 2);
+                Size = UDim2.new(1, 0, 0, 0);
                 ZIndex = 2;
                 Parent = Info.Side == 1 and LeftSide or RightSide;
             });
@@ -3565,24 +3614,11 @@ function Library:CreateWindow(...)
             Tab:ShowTab();
         end;
 
+        Tab.TabButton = TabButton;
         Window.Tabs[Name] = Tab;
-        Window:UpdateTabWidths();
+        Window:UpdateTabButtonSizes();
+
         return Tab;
-    end;
-
-    function Window:UpdateTabWidths()
-        local tabCount = #self.Tabs
-        if tabCount == 0 then
-            return
-        end
-
-        for _, t in next, self.Tabs do
-            if t and t.TabButton and t.TabButton:IsA('Frame') then
-                t.TabButton.Size = UDim2.new(1 / tabCount, 0, 1, 0)
-            end
-        end
-
-        TabListLayout:ApplyLayout();
     end;
 
     local ModalElement = Library:Create('TextButton', {
