@@ -39,6 +39,8 @@ local Library = {
     Black = Color3.new(0, 0, 0);
     Font = Enum.Font.Code,
 
+    MinSize = Vector2.new(480, 360);
+
     OpenedFrames = {};
     DependencyBoxes = {};
 
@@ -189,61 +191,70 @@ function Library:MakeDraggable(Instance, Cutoff)
     end)
 end;
 
-function Library:MakeResizable(Instance, MinSize, MaxSize)
-    MinSize = MinSize or Vector2.new(300, 250)
-    MaxSize = MaxSize or Vector2.new(2000, 2000)
+function Library:MakeResizable(UI, DragFrame, Callback)
+    local StartPos
+    local FrameSize
+    local Dragging = false
+    local Changed
+    local _resizeDeferred = false
 
-    local ResizeHandle = Library:Create('Frame', {
-        Name = 'ResizeHandle';
-        AnchorPoint = Vector2.new(1, 1);
-        BackgroundColor3 = Library.OutlineColor;
-        BackgroundTransparency = 0.7;
-        BorderSizePixel = 0;
-        Position = UDim2.new(1, -3, 1, -3);
-        Size = UDim2.fromOffset(12, 12);
-        ZIndex = 100;
-        Parent = Instance;
-        Active = true;
-    });
-
-    local DragActive = false
-    local StartMouse
-    local StartSize
-
-    local function stopDrag()
-        DragActive = false
-    end
-
-    ResizeHandle.InputBegan:Connect(function(Input)
+    DragFrame.InputBegan:Connect(function(Input)
         if Input.UserInputType ~= Enum.UserInputType.MouseButton1 then
             return
         end
 
-        DragActive = true
-        StartMouse = Vector2.new(Mouse.X, Mouse.Y)
-        StartSize = Instance.Size
+        StartPos = InputService:GetMouseLocation()
+        FrameSize = UI.Size
+        Dragging = true
+
+        Changed = Input.Changed:Connect(function()
+            if Input.UserInputState ~= Enum.UserInputState.End then
+                return
+            end
+
+            Dragging = false
+            if Changed and Changed.Connected then
+                Changed:Disconnect()
+                Changed = nil
+            end
+
+            if Callback then
+                _resizeDeferred = false
+                Library:SafeCallback(Callback)
+            end
+        end)
     end)
 
-    ResizeHandle.InputEnded:Connect(function(Input)
-        if Input.UserInputType == Enum.UserInputType.MouseButton1 then
-            stopDrag()
-        end
-    end)
-
-    local dragConnection
-    dragConnection = InputService.InputChanged:Connect(function(Input)
-        if not DragActive or Input.UserInputType ~= Enum.UserInputType.MouseMovement then
+    Library:GiveSignal(InputService.InputChanged:Connect(function(Input)
+        if not UI.Visible or not (ScreenGui and ScreenGui.Parent) then
+            Dragging = false
+            if Changed and Changed.Connected then
+                Changed:Disconnect()
+                Changed = nil
+            end
             return
         end
+    end))
 
-        local MouseDiff = Vector2.new(Mouse.X, Mouse.Y) - StartMouse
-        local NewWidth = math.clamp(StartSize.X.Offset + MouseDiff.X, MinSize.X, MaxSize.X)
-        local NewHeight = math.clamp(StartSize.Y.Offset + MouseDiff.Y, MinSize.Y, MaxSize.Y)
+    Library:GiveSignal(RenderStepped:Connect(function()
+        if Dragging and UI.Visible and (ScreenGui and ScreenGui.Parent) then
+            local Delta = InputService:GetMouseLocation() - StartPos
+            UI.Size = UDim2.new(
+                FrameSize.X.Scale,
+                math.clamp(FrameSize.X.Offset + Delta.X, Library.MinSize.X, math.huge),
+                FrameSize.Y.Scale,
+                math.clamp(FrameSize.Y.Offset + Delta.Y, Library.MinSize.Y, math.huge)
+            )
 
-        Instance.Size = UDim2.new(StartSize.X.Scale, NewWidth, StartSize.Y.Scale, NewHeight)
-    end)
-
-    Library:GiveSignal(dragConnection)
+            if Callback and not _resizeDeferred then
+                _resizeDeferred = true
+                task.defer(function()
+                    _resizeDeferred = false
+                    Library:SafeCallback(Callback)
+                end)
+            end
+        end
+    end))
 end;
 
 function Library:AddToolTip(InfoStr, HoverInstance)
@@ -1638,13 +1649,9 @@ do
 
             SubButton.Outer, SubButton.Inner, SubButton.Label = CreateBaseButton(SubButton)
 
-            SubButton.Outer.Position = UDim2.new(0.5, 3, 0, 0)
-            SubButton.Outer.Size = UDim2.new(0.5, -5, 1, 0)
+            SubButton.Outer.Position = UDim2.new(1, 3, 0, 0)
+            SubButton.Outer.Size = UDim2.fromOffset(self.Outer.AbsoluteSize.X - 2, self.Outer.AbsoluteSize.Y)
             SubButton.Outer.Parent = self.Outer
-
-            self.Outer:GetPropertyChangedSignal('AbsoluteSize'):Connect(function()
-                SubButton.Outer.Size = UDim2.new(0.5, -5, 1, 0)
-            end)
 
             function SubButton:AddTooltip(tooltip)
                 if type(tooltip) == 'string' then
@@ -3052,7 +3059,22 @@ function Library:CreateWindow(...)
     });
 
     Library:MakeDraggable(Outer, 25);
-    Library:MakeResizable(Outer, Vector2.new(350, 250), Vector2.new(1900, 1200));
+
+    local ResizeHandle = Library:Create('TextButton', {
+        AnchorPoint = Vector2.new(1, 1);
+        BackgroundTransparency = 1;
+        Position = UDim2.new(1, -15, 1, -15);
+        Size = UDim2.new(0, 15, 0, 15);
+        Text = '';
+        ZIndex = 3;
+        Parent = Outer;
+    });
+
+    Library:MakeResizable(Outer, ResizeHandle, function()
+        if Window.ActiveTab then
+            Window.ActiveTab:Resize()
+        end
+    end)
 
     local Inner = Library:Create('Frame', {
         BackgroundColor3 = Library.MainColor;
@@ -3140,6 +3162,15 @@ function Library:CreateWindow(...)
         WindowLabel.Text = Title;
     end;
 
+    function Window:UISize(Size)
+        if typeof(Size) == 'UDim2' then
+            Outer.Size = Size
+            if Window.ActiveTab then
+                Window.ActiveTab:Resize()
+            end
+        end
+    end;
+
     function Window:AddTab(Name)
         local Tab = {
             Groupboxes = {};
@@ -3196,8 +3227,8 @@ function Library:CreateWindow(...)
         local LeftSide = Library:Create('ScrollingFrame', {
             BackgroundTransparency = 1;
             BorderSizePixel = 0;
-            Position = UDim2.new(0, 7, 0, 7);
-            Size = UDim2.new(0.5, -12, 1, -16);
+            Position = UDim2.new(0, 8 - 1, 0, 8 - 1);
+            Size = UDim2.new(0.5, -10, 1, -16);
             CanvasSize = UDim2.new(0, 0, 0, 0);
             BottomImage = '';
             TopImage = '';
@@ -3209,8 +3240,8 @@ function Library:CreateWindow(...)
         local RightSide = Library:Create('ScrollingFrame', {
             BackgroundTransparency = 1;
             BorderSizePixel = 0;
-            Position = UDim2.new(0.5, 5, 0, 7);
-            Size = UDim2.new(0.5, -12, 1, -16);
+            Position = UDim2.new(0.5, 4 + 1, 0, 8 - 1);
+            Size = UDim2.new(0.5, -10, 1, -16);
             CanvasSize = UDim2.new(0, 0, 0, 0);
             BottomImage = '';
             TopImage = '';
@@ -3250,6 +3281,8 @@ function Library:CreateWindow(...)
             TabButton.BackgroundColor3 = Library.MainColor;
             Library.RegistryMap[TabButton].Properties.BackgroundColor3 = 'MainColor';
             TabFrame.Visible = true;
+
+            Window.ActiveTab = Tab;
         end;
 
         function Tab:HideTab()
@@ -3271,7 +3304,7 @@ function Library:CreateWindow(...)
                 BackgroundColor3 = Library.BackgroundColor;
                 BorderColor3 = Library.OutlineColor;
                 BorderMode = Enum.BorderMode.Inset;
-                Size = UDim2.new(1, 0, 0, 20 + 2);
+                Size = UDim2.new(1, 0, 0, 507 + 2);
                 ZIndex = 2;
                 Parent = Info.Side == 1 and LeftSide or RightSide;
             });
@@ -3575,19 +3608,6 @@ function Library:CreateWindow(...)
         Window.Tabs[Name] = Tab;
         return Tab;
     end;
-
-    Outer:GetPropertyChangedSignal('AbsoluteSize'):Connect(function()
-        for _, Tab in next, Window.Tabs do
-            if type(Tab.Resize) == 'function' then
-                Tab:Resize();
-            end
-            for _, Groupbox in next, Tab.Groupboxes do
-                if type(Groupbox.Resize) == 'function' then
-                    Groupbox:Resize();
-                end
-            end
-        end
-    end)
 
     local ModalElement = Library:Create('TextButton', {
         BackgroundTransparency = 1;
