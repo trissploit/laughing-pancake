@@ -203,11 +203,16 @@ function Library:MakeResizable(Instance, MinSize, MaxSize)
         Size = UDim2.fromOffset(12, 12);
         ZIndex = 100;
         Parent = Instance;
+        Active = true;
     });
 
     local DragActive = false
     local StartMouse
     local StartSize
+
+    local function stopDrag()
+        DragActive = false
+    end
 
     ResizeHandle.InputBegan:Connect(function(Input)
         if Input.UserInputType ~= Enum.UserInputType.MouseButton1 then
@@ -217,26 +222,28 @@ function Library:MakeResizable(Instance, MinSize, MaxSize)
         DragActive = true
         StartMouse = Vector2.new(Mouse.X, Mouse.Y)
         StartSize = Instance.Size
-
-        RenderStepped:Wait()
-        while InputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) and DragActive do
-            local MouseDiff = Vector2.new(Mouse.X, Mouse.Y) - StartMouse
-
-            local NewWidth = math.clamp(StartSize.X.Offset + MouseDiff.X, MinSize.X, MaxSize.X)
-            local NewHeight = math.clamp(StartSize.Y.Offset + MouseDiff.Y, MinSize.Y, MaxSize.Y)
-
-            Instance.Size = UDim2.new(StartSize.X.Scale, NewWidth, StartSize.Y.Scale, NewHeight)
-            RenderStepped:Wait()
-        end
-
-        DragActive = false
     end)
 
     ResizeHandle.InputEnded:Connect(function(Input)
         if Input.UserInputType == Enum.UserInputType.MouseButton1 then
-            DragActive = false
+            stopDrag()
         end
     end)
+
+    local dragConnection
+    dragConnection = InputService.InputChanged:Connect(function(Input)
+        if not DragActive or Input.UserInputType ~= Enum.UserInputType.MouseMovement then
+            return
+        end
+
+        local MouseDiff = Vector2.new(Mouse.X, Mouse.Y) - StartMouse
+        local NewWidth = math.clamp(StartSize.X.Offset + MouseDiff.X, MinSize.X, MaxSize.X)
+        local NewHeight = math.clamp(StartSize.Y.Offset + MouseDiff.Y, MinSize.Y, MaxSize.Y)
+
+        Instance.Size = UDim2.new(StartSize.X.Scale, NewWidth, StartSize.Y.Scale, NewHeight)
+    end)
+
+    Library:GiveSignal(dragConnection)
 end;
 
 function Library:AddToolTip(InfoStr, HoverInstance)
