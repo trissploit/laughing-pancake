@@ -39,8 +39,6 @@ local Library = {
     Black = Color3.new(0, 0, 0);
     Font = Enum.Font.Code,
 
-    MinSize = Vector2.new(480, 360);
-
     OpenedFrames = {};
     DependencyBoxes = {};
 
@@ -191,70 +189,63 @@ function Library:MakeDraggable(Instance, Cutoff)
     end)
 end;
 
-function Library:MakeResizable(UI, DragFrame, Callback)
-    local StartPos
-    local FrameSize
-    local Dragging = false
-    local Changed
-    local _resizeDeferred = false
+function Library:MakeResizable(Instance, MinSize)
+    MinSize = MinSize or Vector2.new(200, 150)
 
-    DragFrame.InputBegan:Connect(function(Input)
-        if Input.UserInputType ~= Enum.UserInputType.MouseButton1 then
-            return
+    local ResizeGrip = Library:Create('Frame', {
+        AnchorPoint = Vector2.new(1, 1);
+        Position = UDim2.new(1, -6, 1, -6);
+        Size = UDim2.new(0, 12, 0, 12);
+        BackgroundColor3 = Library.OutlineColor;
+        BorderColor3 = Library.AccentColor;
+        ZIndex = 500;
+        Parent = Instance;
+        Active = true;
+    })
+
+    Library:AddToRegistry(ResizeGrip, {
+        BackgroundColor3 = 'OutlineColor';
+        BorderColor3 = 'AccentColor';
+    });
+
+    local IsResizing = false;
+    local StartMouse = Vector2.new();
+    local StartSize = UDim2.new();
+
+    ResizeGrip.InputBegan:Connect(function(Input)
+        if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+            IsResizing = true;
+            StartMouse = Vector2.new(Mouse.X, Mouse.Y);
+            StartSize = Instance.Size;
+            InputService.MouseIconEnabled = true;
         end
-
-        StartPos = InputService:GetMouseLocation()
-        FrameSize = UI.Size
-        Dragging = true
-
-        Changed = Input.Changed:Connect(function()
-            if Input.UserInputState ~= Enum.UserInputState.End then
-                return
-            end
-
-            Dragging = false
-            if Changed and Changed.Connected then
-                Changed:Disconnect()
-                Changed = nil
-            end
-
-            if Callback then
-                _resizeDeferred = false
-                Library:SafeCallback(Callback)
-            end
-        end)
     end)
 
-    Library:GiveSignal(InputService.InputChanged:Connect(function(Input)
-        if not UI.Visible or not (ScreenGui and ScreenGui.Parent) then
-            Dragging = false
-            if Changed and Changed.Connected then
-                Changed:Disconnect()
-                Changed = nil
-            end
+    ResizeGrip.InputEnded:Connect(function(Input)
+        if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+            IsResizing = false;
+        end
+    end)
+
+    RunService.RenderStepped:Connect(function()
+        if not IsResizing then
             return
         end
-    end))
 
-    Library:GiveSignal(RenderStepped:Connect(function()
-        if Dragging and UI.Visible and (ScreenGui and ScreenGui.Parent) then
-            local Delta = InputService:GetMouseLocation() - StartPos
-            UI.Size = UDim2.new(
-                FrameSize.X.Scale,
-                math.clamp(FrameSize.X.Offset + Delta.X, Library.MinSize.X, math.huge),
-                FrameSize.Y.Scale,
-                math.clamp(FrameSize.Y.Offset + Delta.Y, Library.MinSize.Y, math.huge)
-            )
+        local Delta = Vector2.new(Mouse.X, Mouse.Y) - StartMouse
+        local newW = math.max(MinSize.X, StartSize.X.Offset + Delta.X)
+        local newH = math.max(MinSize.Y, StartSize.Y.Offset + Delta.Y)
 
-            if Callback and not _resizeDeferred then
-                _resizeDeferred = true
-                task.defer(function()
-                    _resizeDeferred = false
-                    Library:SafeCallback(Callback)
-                end)
-            end
-        end
-    end))
+        Instance.Size = UDim2.new(StartSize.X.Scale, newW, StartSize.Y.Scale, newH)
+    end)
+
+    ResizeGrip.MouseEnter:Connect(function()
+        ResizeGrip.Cursor = 'SizeNWSE'
+    end)
+
+    ResizeGrip.MouseLeave:Connect(function()
+        ResizeGrip.Cursor = ''
+    end)
 end;
 
 function Library:AddToolTip(InfoStr, HoverInstance)
@@ -3059,22 +3050,7 @@ function Library:CreateWindow(...)
     });
 
     Library:MakeDraggable(Outer, 25);
-
-    local ResizeHandle = Library:Create('TextButton', {
-        AnchorPoint = Vector2.new(1, 1);
-        BackgroundTransparency = 1;
-        Position = UDim2.new(1, -15, 1, -15);
-        Size = UDim2.new(0, 15, 0, 15);
-        Text = '';
-        ZIndex = 3;
-        Parent = Outer;
-    });
-
-    Library:MakeResizable(Outer, ResizeHandle, function()
-        if Window.ActiveTab then
-            Window.ActiveTab:Resize()
-        end
-    end)
+    Library:MakeResizable(Outer, Vector2.new(300, 240));
 
     local Inner = Library:Create('Frame', {
         BackgroundColor3 = Library.MainColor;
@@ -3162,15 +3138,6 @@ function Library:CreateWindow(...)
         WindowLabel.Text = Title;
     end;
 
-    function Window:UISize(Size)
-        if typeof(Size) == 'UDim2' then
-            Outer.Size = Size
-            if Window.ActiveTab then
-                Window.ActiveTab:Resize()
-            end
-        end
-    end;
-
     function Window:AddTab(Name)
         local Tab = {
             Groupboxes = {};
@@ -3228,7 +3195,7 @@ function Library:CreateWindow(...)
             BackgroundTransparency = 1;
             BorderSizePixel = 0;
             Position = UDim2.new(0, 8 - 1, 0, 8 - 1);
-            Size = UDim2.new(0.5, -10, 1, -16);
+            Size = UDim2.new(0.5, -12 + 2, 0, 507 + 2);
             CanvasSize = UDim2.new(0, 0, 0, 0);
             BottomImage = '';
             TopImage = '';
@@ -3241,7 +3208,7 @@ function Library:CreateWindow(...)
             BackgroundTransparency = 1;
             BorderSizePixel = 0;
             Position = UDim2.new(0.5, 4 + 1, 0, 8 - 1);
-            Size = UDim2.new(0.5, -10, 1, -16);
+            Size = UDim2.new(0.5, -12 + 2, 0, 507 + 2);
             CanvasSize = UDim2.new(0, 0, 0, 0);
             BottomImage = '';
             TopImage = '';
@@ -3281,8 +3248,6 @@ function Library:CreateWindow(...)
             TabButton.BackgroundColor3 = Library.MainColor;
             Library.RegistryMap[TabButton].Properties.BackgroundColor3 = 'MainColor';
             TabFrame.Visible = true;
-
-            Window.ActiveTab = Tab;
         end;
 
         function Tab:HideTab()
