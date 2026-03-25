@@ -2992,40 +2992,6 @@ function Library:CreateWindow(...)
 
     Library:MakeDraggable(Outer, 25);
 
-    local MinWidth, MinHeight = 250, 200
-    local ResizeGrip = Library:Create('Frame', {
-        AnchorPoint = Vector2.new(1, 1);
-        Position = UDim2.new(1, 0, 1, 0);
-        Size = UDim2.fromOffset(14, 14);
-        BackgroundColor3 = Library.OutlineColor;
-        BorderColor3 = Color3.new(0, 0, 0);
-        ZIndex = 10;
-        Parent = Outer;
-    });
-
-    Library:AddToRegistry(ResizeGrip, {
-        BackgroundColor3 = 'OutlineColor';
-    });
-
-    ResizeGrip.InputBegan:Connect(function(input)
-        if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
-
-        local startMouse = Vector2.new(Mouse.X, Mouse.Y)
-        local startSize = Outer.AbsoluteSize
-
-        while InputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) do
-            local currMouse = Vector2.new(Mouse.X, Mouse.Y)
-            local delta = currMouse - startMouse
-
-            local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1920, 1080)
-            local newW = math.clamp(startSize.X + delta.X, MinWidth, viewport.X - Outer.AbsolutePosition.X)
-            local newH = math.clamp(startSize.Y + delta.Y, MinHeight, viewport.Y - Outer.AbsolutePosition.Y)
-
-            Outer.Size = UDim2.fromOffset(newW, newH)
-            task.wait()
-        end
-    end)
-
     local Inner = Library:Create('Frame', {
         BackgroundColor3 = Library.MainColor;
         BorderColor3 = Library.AccentColor;
@@ -3093,25 +3059,6 @@ function Library:CreateWindow(...)
         Parent = TabArea;
     });
 
-    local function UpdateWindowTabButtonSizes()
-        local tabCount = 0
-        for _, _ in next, Window.Tabs do
-            tabCount = tabCount + 1
-        end
-
-        if tabCount <= 0 then
-            return
-        end
-
-        for _, child in next, TabArea:GetChildren() do
-            if child:IsA('Frame') then
-                child.Size = UDim2.new(1 / tabCount, 0, 1, 0)
-            end
-        end
-    end
-
-    Outer:GetPropertyChangedSignal('AbsoluteSize'):Connect(UpdateWindowTabButtonSizes)
-
     local TabContainer = Library:Create('Frame', {
         BackgroundColor3 = Library.MainColor;
         BorderColor3 = Library.OutlineColor;
@@ -3127,6 +3074,63 @@ function Library:CreateWindow(...)
         BorderColor3 = 'OutlineColor';
     });
 
+    local Resizing = false
+    local ResizeStartMouse = Vector2.new(0, 0)
+    local ResizeStartSize = Vector2.new(0, 0)
+
+    local ResizeGrip = Library:Create('Frame', {
+        AnchorPoint = Vector2.new(1, 1);
+        Position = UDim2.new(1, -4, 1, -4);
+        Size = UDim2.new(0, 16, 0, 16);
+        BackgroundColor3 = Library.OutlineColor;
+        BorderColor3 = Library.MainColor;
+        BorderSizePixel = 1;
+        ZIndex = 20;
+        Parent = Outer;
+    });
+
+    local ResizeGripCorner = Library:Create('ImageLabel', {
+        BackgroundTransparency = 1;
+        Image = 'rbxassetid://7072715336'; -- diagonal grip pattern (fallback)
+        ScaleType = Enum.ScaleType.Fit;
+        Size = UDim2.new(1, 0, 1, 0);
+        ZIndex = 21;
+        Parent = ResizeGrip;
+    });
+
+    ResizeGrip.InputBegan:Connect(function(Input)
+        if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+            Resizing = true
+            ResizeStartMouse = Vector2.new(Mouse.X, Mouse.Y)
+            ResizeStartSize = Outer.AbsoluteSize
+            Input.Changed:Connect(function()
+                if Input.UserInputState == Enum.UserInputState.End then
+                    Resizing = false
+                end
+            end)
+        end
+    end)
+
+    InputService.InputChanged:Connect(function(Input)
+        if not Resizing or Input.UserInputType ~= Enum.UserInputType.MouseMovement then
+            return
+        end
+
+        local CurrentMouse = Vector2.new(Mouse.X, Mouse.Y)
+        local Delta = CurrentMouse - ResizeStartMouse
+
+        local NewWidth = math.max(300, ResizeStartSize.X + Delta.X)
+        local NewHeight = math.max(240, ResizeStartSize.Y + Delta.Y)
+
+        Outer.Size = UDim2.new(0, NewWidth, 0, NewHeight)
+    end)
+
+    InputService.InputEnded:Connect(function(Input)
+        if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+            Resizing = false
+        end
+    end)
+
     function Window:SetWindowTitle(Title)
         WindowLabel.Text = Title;
     end;
@@ -3137,12 +3141,10 @@ function Library:CreateWindow(...)
             Tabboxes = {};
         };
 
-        local TabButtonWidth = Library:GetTextBounds(Name, Library.Font, 16);
-
         local TabButton = Library:Create('Frame', {
             BackgroundColor3 = Library.BackgroundColor;
             BorderColor3 = Library.OutlineColor;
-            Size = UDim2.new(0, TabButtonWidth + 8 + 4, 1, 0);
+            Size = UDim2.new(0, 0, 1, 0);
             ZIndex = 1;
             Parent = TabArea;
         });
@@ -3188,7 +3190,7 @@ function Library:CreateWindow(...)
             BackgroundTransparency = 1;
             BorderSizePixel = 0;
             Position = UDim2.new(0, 8 - 1, 0, 8 - 1);
-            Size = UDim2.new(0.5, -10, 1, -16);
+            Size = UDim2.new(0.5, -12 + 2, 0, 507 + 2);
             CanvasSize = UDim2.new(0, 0, 0, 0);
             BottomImage = '';
             TopImage = '';
@@ -3201,7 +3203,7 @@ function Library:CreateWindow(...)
             BackgroundTransparency = 1;
             BorderSizePixel = 0;
             Position = UDim2.new(0.5, 4 + 1, 0, 8 - 1);
-            Size = UDim2.new(0.5, -10, 1, -16);
+            Size = UDim2.new(0.5, -12 + 2, 0, 507 + 2);
             CanvasSize = UDim2.new(0, 0, 0, 0);
             BottomImage = '';
             TopImage = '';
@@ -3241,7 +3243,6 @@ function Library:CreateWindow(...)
             TabButton.BackgroundColor3 = Library.MainColor;
             Library.RegistryMap[TabButton].Properties.BackgroundColor3 = 'MainColor';
             TabFrame.Visible = true;
-            Tab:Resize();
         end;
 
         function Tab:HideTab()
@@ -3254,7 +3255,6 @@ function Library:CreateWindow(...)
         function Tab:SetLayoutOrder(Position)
             TabButton.LayoutOrder = Position;
             TabListLayout:ApplyLayout();
-            UpdateWindowTabButtonSizes()
         end;
 
         function Tab:AddGroupbox(Info)
@@ -3264,7 +3264,7 @@ function Library:CreateWindow(...)
                 BackgroundColor3 = Library.BackgroundColor;
                 BorderColor3 = Library.OutlineColor;
                 BorderMode = Enum.BorderMode.Inset;
-                Size = UDim2.new(1, 0, 0, 1);
+                Size = UDim2.new(1, 0, 0, 507 + 2);
                 ZIndex = 2;
                 Parent = Info.Side == 1 and LeftSide or RightSide;
             });
@@ -3565,16 +3565,24 @@ function Library:CreateWindow(...)
             Tab:ShowTab();
         end;
 
-        local tabCount = 0
-        for _, _ in next, Window.Tabs do
-            tabCount = tabCount + 1
-        end
-        TabButton.LayoutOrder = tabCount + 1
-
         Window.Tabs[Name] = Tab;
-        UpdateWindowTabButtonSizes();
-
+        Window:UpdateTabWidths();
         return Tab;
+    end;
+
+    function Window:UpdateTabWidths()
+        local tabCount = #self.Tabs
+        if tabCount == 0 then
+            return
+        end
+
+        for _, t in next, self.Tabs do
+            if t and t.TabButton and t.TabButton:IsA('Frame') then
+                t.TabButton.Size = UDim2.new(1 / tabCount, 0, 1, 0)
+            end
+        end
+
+        TabListLayout:ApplyLayout();
     end;
 
     local ModalElement = Library:Create('TextButton', {
