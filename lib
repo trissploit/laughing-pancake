@@ -2992,6 +2992,40 @@ function Library:CreateWindow(...)
 
     Library:MakeDraggable(Outer, 25);
 
+    local MinWidth, MinHeight = 250, 200
+    local ResizeGrip = Library:Create('Frame', {
+        AnchorPoint = Vector2.new(1, 1);
+        Position = UDim2.new(1, 0, 1, 0);
+        Size = UDim2.fromOffset(14, 14);
+        BackgroundColor3 = Library.OutlineColor;
+        BorderColor3 = Color3.new(0, 0, 0);
+        ZIndex = 10;
+        Parent = Outer;
+    });
+
+    Library:AddToRegistry(ResizeGrip, {
+        BackgroundColor3 = 'OutlineColor';
+    });
+
+    ResizeGrip.InputBegan:Connect(function(input)
+        if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+
+        local startMouse = Vector2.new(Mouse.X, Mouse.Y)
+        local startSize = Outer.AbsoluteSize
+
+        while InputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) do
+            local currMouse = Vector2.new(Mouse.X, Mouse.Y)
+            local delta = currMouse - startMouse
+
+            local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1920, 1080)
+            local newW = math.clamp(startSize.X + delta.X, MinWidth, viewport.X - Outer.AbsolutePosition.X)
+            local newH = math.clamp(startSize.Y + delta.Y, MinHeight, viewport.Y - Outer.AbsolutePosition.Y)
+
+            Outer.Size = UDim2.fromOffset(newW, newH)
+            task.wait()
+        end
+    end)
+
     local Inner = Library:Create('Frame', {
         BackgroundColor3 = Library.MainColor;
         BorderColor3 = Library.AccentColor;
@@ -3058,6 +3092,25 @@ function Library:CreateWindow(...)
         SortOrder = Enum.SortOrder.LayoutOrder;
         Parent = TabArea;
     });
+
+    local function UpdateWindowTabButtonSizes()
+        local tabCount = 0
+        for _, _ in next, Window.Tabs do
+            tabCount = tabCount + 1
+        end
+
+        if tabCount <= 0 then
+            return
+        end
+
+        for _, child in next, TabArea:GetChildren() do
+            if child:IsA('Frame') then
+                child.Size = UDim2.new(1 / tabCount, 0, 1, 0)
+            end
+        end
+    end
+
+    Outer:GetPropertyChangedSignal('AbsoluteSize'):Connect(UpdateWindowTabButtonSizes)
 
     local TabContainer = Library:Create('Frame', {
         BackgroundColor3 = Library.MainColor;
@@ -3200,6 +3253,7 @@ function Library:CreateWindow(...)
         function Tab:SetLayoutOrder(Position)
             TabButton.LayoutOrder = Position;
             TabListLayout:ApplyLayout();
+            UpdateWindowTabButtonSizes()
         end;
 
         function Tab:AddGroupbox(Info)
@@ -3510,7 +3564,15 @@ function Library:CreateWindow(...)
             Tab:ShowTab();
         end;
 
+        local tabCount = 0
+        for _, _ in next, Window.Tabs do
+            tabCount = tabCount + 1
+        end
+        TabButton.LayoutOrder = tabCount + 1
+
         Window.Tabs[Name] = Tab;
+        UpdateWindowTabButtonSizes();
+
         return Tab;
     end;
 
