@@ -189,55 +189,53 @@ function Library:MakeDraggable(Instance, Cutoff)
     end)
 end;
 
-function Library:MakeResizable(Window, MinSize, MaxSize)
-    MinSize = MinSize or Vector2.new(250, 200)
-    MaxSize = MaxSize or Vector2.new(1920, 1080)
+function Library:MakeResizable(Instance, MinSize, MaxSize)
+    MinSize = MinSize or Vector2.new(300, 250)
+    MaxSize = MaxSize or Vector2.new(2000, 2000)
 
-    local Grip = Library:Create('Frame', {
-        Size = UDim2.new(0, 16, 0, 16);
-        Position = UDim2.new(1, -16, 1, -16);
-        AnchorPoint = Vector2.new(0, 0);
-        BackgroundColor3 = Library.BackgroundColor;
-        BorderColor3 = Library.OutlineColor;
-        ZIndex = 999;
-        Parent = Window;
+    local ResizeHandle = Library:Create('Frame', {
+        Name = 'ResizeHandle';
+        AnchorPoint = Vector2.new(1, 1);
+        BackgroundColor3 = Library.OutlineColor;
+        BackgroundTransparency = 0.7;
+        BorderSizePixel = 0;
+        Position = UDim2.new(1, -3, 1, -3);
+        Size = UDim2.fromOffset(12, 12);
+        ZIndex = 100;
+        Parent = Instance;
     });
 
-    Library:AddToRegistry(Grip, {
-        BackgroundColor3 = 'BackgroundColor';
-        BorderColor3 = 'OutlineColor';
-    });
+    local DragActive = false
+    local StartMouse
+    local StartSize
 
-    local Resizing = false;
-    local StartMouse = Vector2.new();
-    local StartSize = Vector2.new();
+    ResizeHandle.InputBegan:Connect(function(Input)
+        if Input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+            return
+        end
 
-    Grip.InputBegan:Connect(function(Input)
-        if Input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
-
-        Resizing = true
+        DragActive = true
         StartMouse = Vector2.new(Mouse.X, Mouse.Y)
-        StartSize = Vector2.new(Window.AbsoluteSize.X, Window.AbsoluteSize.Y)
+        StartSize = Instance.Size
 
-        local Connection
-        Connection = Input.Changed:Connect(function(state)
-            if state == Enum.UserInputState.End then
-                Resizing = false
-                Connection:Disconnect()
-            end
-        end)
+        RenderStepped:Wait()
+        while InputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) and DragActive do
+            local MouseDiff = Vector2.new(Mouse.X, Mouse.Y) - StartMouse
+
+            local NewWidth = math.clamp(StartSize.X.Offset + MouseDiff.X, MinSize.X, MaxSize.X)
+            local NewHeight = math.clamp(StartSize.Y.Offset + MouseDiff.Y, MinSize.Y, MaxSize.Y)
+
+            Instance.Size = UDim2.new(StartSize.X.Scale, NewWidth, StartSize.Y.Scale, NewHeight)
+            RenderStepped:Wait()
+        end
+
+        DragActive = false
     end)
 
-    UserInputService.InputChanged:Connect(function(Input)
-        if not Resizing or Input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
-
-        local Delta = Vector2.new(Mouse.X, Mouse.Y) - StartMouse
-        local NewSize = Vector2.new(
-            math.clamp(StartSize.X + Delta.X, MinSize.X, MaxSize.X),
-            math.clamp(StartSize.Y + Delta.Y, MinSize.Y, MaxSize.Y)
-        )
-
-        Window.Size = UDim2.fromOffset(NewSize.X, NewSize.Y)
+    ResizeHandle.InputEnded:Connect(function(Input)
+        if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+            DragActive = false
+        end
     end)
 end;
 
@@ -3043,7 +3041,7 @@ function Library:CreateWindow(...)
     });
 
     Library:MakeDraggable(Outer, 25);
-    Library:MakeResizable(Outer, Vector2.new(300, 260), Vector2.new(1400, 900));
+    Library:MakeResizable(Outer, Vector2.new(350, 250), Vector2.new(1900, 1200));
 
     local Inner = Library:Create('Frame', {
         BackgroundColor3 = Library.MainColor;
@@ -3188,7 +3186,7 @@ function Library:CreateWindow(...)
             BackgroundTransparency = 1;
             BorderSizePixel = 0;
             Position = UDim2.new(0, 8 - 1, 0, 8 - 1);
-            Size = UDim2.new(0.5, -12 + 2, 1, -16);
+            Size = UDim2.new(0.5, -12 + 2, 0, 507 + 2);
             CanvasSize = UDim2.new(0, 0, 0, 0);
             BottomImage = '';
             TopImage = '';
@@ -3201,7 +3199,7 @@ function Library:CreateWindow(...)
             BackgroundTransparency = 1;
             BorderSizePixel = 0;
             Position = UDim2.new(0.5, 4 + 1, 0, 8 - 1);
-            Size = UDim2.new(0.5, -12 + 2, 1, -16);
+            Size = UDim2.new(0.5, -12 + 2, 0, 507 + 2);
             CanvasSize = UDim2.new(0, 0, 0, 0);
             BottomImage = '';
             TopImage = '';
