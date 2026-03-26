@@ -28,13 +28,21 @@ local ThemeManager = {} do
 			if idx == 'Font' then
 				local requestedFont = Enum.Font[col] or self.Library.Font
 				self.Library.Font = requestedFont
-				if Options.Font then
-					Options.Font:SetValue(col)
+				if Options and Options.Font then
+					if type(Options.Font.SetValue) == 'function' then
+						Options.Font:SetValue(col)
+					else
+						Options.Font.Value = col
+					end
 				end
 			else
 				self.Library[idx] = Color3.fromHex(col)
-				if Options[idx] then
-					Options[idx]:SetValueRGB(Color3.fromHex(col))
+				if Options and Options[idx] then
+					if type(Options[idx].SetValueRGB) == 'function' then
+						Options[idx]:SetValueRGB(Color3.fromHex(col))
+					else
+						Options[idx].Value = Color3.fromHex(col)
+					end
 				end
 			end
 		end
@@ -49,8 +57,14 @@ local ThemeManager = {} do
 			if Options and Options[field] then
 				if field == "Font" then
 					self.Library.Font = Enum.Font[Options.Font.Value] or self.Library.Font
+					if type(Options.Font.SetValue) == 'function' then
+						Options.Font:SetValue(Options.Font.Value)
+					end
 				else
 					self.Library[field] = Options[field].Value
+					if type(Options[field].SetValueRGB) == 'function' then
+						Options[field]:SetValueRGB(Options[field].Value)
+					end
 				end
 			end
 		end
