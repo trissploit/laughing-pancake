@@ -2337,7 +2337,8 @@ do
             TextSize = 14;
             Text = '--';
             TextXAlignment = Enum.TextXAlignment.Left;
-            TextWrapped = true;
+            TextTruncate = Enum.TextTruncate.AtEnd;
+            TextWrapped = false;
             ZIndex = 7;
             Parent = DropdownInner;
         });
@@ -2366,7 +2367,8 @@ do
         end;
 
         local function RecalculateListSize(YSize)
-            ListOuter.Size = UDim2.fromOffset(DropdownOuter.AbsoluteSize.X, YSize or (MAX_DROPDOWN_ITEMS * 20 + 2))
+            local width = math.max(100, math.min(DropdownOuter.AbsoluteSize.X, 450))
+            ListOuter.Size = UDim2.fromOffset(width, YSize or (MAX_DROPDOWN_ITEMS * 20 + 2))
         end;
 
         RecalculateListPosition();
@@ -2491,6 +2493,8 @@ do
                     TextSize = 14;
                     Text = Value;
                     TextXAlignment = Enum.TextXAlignment.Left;
+                    TextTruncate = Enum.TextTruncate.AtEnd;
+                    TextWrapped = false;
                     ZIndex = 25;
                     Parent = Button;
                 });
@@ -3081,10 +3085,12 @@ function Library:CreateWindow(...)
     });
 
     local WindowLabel = Library:CreateLabel({
-        Position = UDim2.new(0, 7, 0, 0);
-        Size = UDim2.new(0, 0, 0, 25);
+        Position = UDim2.new(0.5, 0, 0, 0);
+        AnchorPoint = Vector2.new(0.5, 0);
+        Size = UDim2.new(1, -14, 0, 25);
         Text = Config.Title or '';
-        TextXAlignment = Enum.TextXAlignment.Left;
+        TextXAlignment = Enum.TextXAlignment.Center;
+        TextYAlignment = Enum.TextYAlignment.Center;
         ZIndex = 1;
         Parent = Inner;
     });
