@@ -2956,17 +2956,18 @@ function Library:UIsize(Outer, NewSize)
     if typeof(NewSize) ~= 'UDim2' then return end
 
     local MinSize = UDim2.new(0, 250, 0, 300)
-
-    local viewportSize = Vector2.new(1920, 1080)
-    if workspace.CurrentCamera and typeof(workspace.CurrentCamera.ViewportSize) == 'Vector2' then
-        viewportSize = workspace.CurrentCamera.ViewportSize
+    -- Determine viewport size to compute sensible maximums
+    local viewportX, viewportY = 1920, 1080
+    if workspace and workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize then
+        viewportX = workspace.CurrentCamera.ViewportSize.X
+        viewportY = workspace.CurrentCamera.ViewportSize.Y
     end
 
-    local maxX = math.max(MinSize.X.Offset, math.floor(viewportSize.X - 20))
-    local maxY = math.max(MinSize.Y.Offset, math.floor(viewportSize.Y - 20))
+    local MaxX = math.max(MinSize.X.Offset, math.floor(viewportX - 20))
+    local MaxY = math.max(MinSize.Y.Offset, math.floor(viewportY - 20))
 
-    local clampedX = math.clamp(NewSize.X.Offset, MinSize.X.Offset, maxX)
-    local clampedY = math.clamp(NewSize.Y.Offset, MinSize.Y.Offset, maxY)
+    local clampedX = math.clamp(NewSize.X.Offset, MinSize.X.Offset, MaxX)
+    local clampedY = math.clamp(NewSize.Y.Offset, MinSize.Y.Offset, MaxY)
 
     Outer.Size = UDim2.new(0, clampedX, 0, clampedY)
 end
