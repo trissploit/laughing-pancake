@@ -1644,6 +1644,10 @@ do
             SubButton.Outer.Size = UDim2.fromOffset(self.Outer.AbsoluteSize.X - 2, self.Outer.AbsoluteSize.Y)
             SubButton.Outer.Parent = self.Outer
 
+            self.Outer:GetPropertyChangedSignal('AbsoluteSize'):Connect(function()
+                SubButton.Outer.Size = UDim2.fromOffset(self.Outer.AbsoluteSize.X - 2, self.Outer.AbsoluteSize.Y)
+            end)
+
             function SubButton:AddTooltip(tooltip)
                 if type(tooltip) == 'string' then
                     Library:AddToolTip(tooltip, self.Outer)
@@ -2150,6 +2154,8 @@ do
                 DisplayLabel.Text = string.format('%s/%s', Slider.Value .. Suffix, Slider.Max .. Suffix);
             end
 
+            local TrackSize = math.max(1, SliderOuter.AbsoluteSize.X - 2);
+            Slider.MaxSize = TrackSize;
             local X = math.ceil(Library:MapValue(Slider.Value, Slider.Min, Slider.Max, 0, Slider.MaxSize));
             Fill.Size = UDim2.new(0, X, 1, 0);
 
@@ -2171,7 +2177,8 @@ do
         end;
 
         function Slider:GetValueFromXOffset(X)
-            return Round(Library:MapValue(X, 0, Slider.MaxSize, Slider.Min, Slider.Max));
+            local TrackSize = math.max(1, SliderOuter.AbsoluteSize.X - 2);
+            return Round(Library:MapValue(X, 0, TrackSize, Slider.Min, Slider.Max));
         end;
 
         function Slider:SetValue(Str)
@@ -2198,7 +2205,9 @@ do
 
                 while InputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) do
                     local nMPos = Mouse.X;
-                    local nX = math.clamp(gPos + (nMPos - mPos) + Diff, 0, Slider.MaxSize);
+                    local TrackSize = math.max(1, SliderOuter.AbsoluteSize.X - 2);
+                    Slider.MaxSize = TrackSize;
+                    local nX = math.clamp(gPos + (nMPos - mPos) + Diff, 0, TrackSize);
 
                     local nValue = Slider:GetValueFromXOffset(nX);
                     local OldValue = Slider.Value;
@@ -2364,6 +2373,10 @@ do
         RecalculateListSize();
 
         DropdownOuter:GetPropertyChangedSignal('AbsolutePosition'):Connect(RecalculateListPosition);
+        DropdownOuter:GetPropertyChangedSignal('AbsoluteSize'):Connect(function()
+            RecalculateListPosition();
+            RecalculateListSize();
+        end);
 
         local ListInner = Library:Create('Frame', {
             BackgroundColor3 = Library.MainColor;
