@@ -31,12 +31,6 @@ local ThemeManager = {} do
 				if Options.Font then
 					Options.Font:SetValue(col)
 				end
-			elseif idx == 'FontSize' then
-				local size = tonumber(col) or self.Library.FontSize
-				self.Library:SetFontSize(size)
-				if Options.FontSize then
-					Options.FontSize:SetValue(size)
-				end
 			else
 				self.Library[idx] = Color3.fromHex(col)
 				if Options[idx] then
@@ -50,13 +44,11 @@ local ThemeManager = {} do
 
 	function ThemeManager:ThemeUpdate()
 		-- This allows us to force apply themes without loading the themes tab :)
-		local options = { "FontColor", "MainColor", "AccentColor", "BackgroundColor", "OutlineColor", "Font", "FontSize" }
+		local options = { "FontColor", "MainColor", "AccentColor", "BackgroundColor", "OutlineColor", "Font" }
 		for i, field in next, options do
 			if Options and Options[field] then
 				if field == "Font" then
 					self.Library.Font = Enum.Font[Options.Font.Value] or self.Library.Font
-				elseif field == "FontSize" then
-					self.Library:SetFontSize(Options.FontSize.Value)
 				else
 					self.Library[field] = Options[field].Value
 				end
@@ -112,18 +104,6 @@ local ThemeManager = {} do
 
 		groupbox:AddLabel('Font')
 		groupbox:AddDropdown('Font', { Text = 'Font', Values = FontValues, Default = table.find(FontValues, self.Library.Font.Name) or 1 })
-
-		groupbox:AddLabel('Font size')
-		groupbox:AddSlider('FontSize', {
-			Text = 'Font size',
-			Default = self.Library.FontSize,
-			Min = 8,
-			Max = 32,
-			Rounding = 0,
-			Callback = function(Value)
-				self.Library:SetFontSize(Value)
-			end
-		})
 
 		local ThemesArray = {}
 		for Name, Theme in next, self.BuiltInThemes do
@@ -182,7 +162,6 @@ local ThemeManager = {} do
 		Options.OutlineColor:OnChanged(UpdateTheme)
 		Options.FontColor:OnChanged(UpdateTheme)
 		Options.Font:OnChanged(UpdateTheme)
-		Options.FontSize:OnChanged(UpdateTheme)
 	end
 
 	function ThemeManager:GetCustomTheme(file)
@@ -211,10 +190,6 @@ local ThemeManager = {} do
 
 		for _, field in next, fields do
 			theme[field] = Options[field].Value:ToHex()
-		end
-
-		if Options.FontSize then
-			theme.FontSize = Options.FontSize.Value
 		end
 
 		if Options.Font and type(Options.Font.Value) == 'string' then
