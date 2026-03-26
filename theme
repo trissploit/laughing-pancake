@@ -50,13 +50,22 @@ local ThemeManager = {} do
 		self:ThemeUpdate()
 	end
 
+	ThemeManager.UpdatingTheme = ThemeManager.UpdatingTheme or false
+
 	function ThemeManager:ThemeUpdate()
+		if self.UpdatingTheme then
+			return
+		end
+
+		self.UpdatingTheme = true
+
 		-- This allows us to force apply themes without loading the themes tab :)
 		local options = { "FontColor", "MainColor", "AccentColor", "BackgroundColor", "OutlineColor", "Font" }
 		for i, field in next, options do
 			if Options and Options[field] then
 				if field == "Font" then
 					self.Library.Font = Enum.Font[Options.Font.Value] or self.Library.Font
+					-- keep dropdown and rest consistent but don't force callback via SetValue to avoid recursion
 					if type(Options.Font.SetValue) == 'function' then
 						Options.Font:SetValue(Options.Font.Value)
 					end
@@ -74,6 +83,8 @@ local ThemeManager = {} do
 		if self.Library.UpdateFontsUsingRegistry then
 			self.Library:UpdateFontsUsingRegistry()
 		end
+
+		self.UpdatingTheme = false
 	end
 
 	function ThemeManager:LoadDefault()		
@@ -203,13 +214,7 @@ local ThemeManager = {} do
 		local fields = { "FontColor", "MainColor", "AccentColor", "BackgroundColor", "OutlineColor" }
 
 		for _, field in next, fields do
-			if Options[field] and Options[field].Value and type(Options[field].Value.ToHex) == 'function' then
-				theme[field] = Options[field].Value:ToHex()
-			elseif Options[field] and Options[field].Value then
-				theme[field] = tostring(Options[field].Value)
-			else
-				theme[field] = "ffffff"
-			end
+			theme[field] = Options[field].Value:ToHex()
 		end
 
 		if Options.Font and type(Options.Font.Value) == 'string' then
