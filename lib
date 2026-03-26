@@ -212,6 +212,8 @@ function Library:MakeResizable(Instance, MinSize)
     local Dragging = false;
     local OriginalMouse = Vector2.new(0, 0);
     local OriginalSize = Vector2.new(0, 0);
+    local OriginalTopLeft = Vector2.new(0, 0);
+    local AnchorPoint = Instance.AnchorPoint or Vector2.new(0, 0)
 
     local function stopDrag()
         Dragging = false;
@@ -222,6 +224,7 @@ function Library:MakeResizable(Instance, MinSize)
             Dragging = true;
             OriginalMouse = Vector2.new(Mouse.X, Mouse.Y);
             OriginalSize = Instance.AbsoluteSize;
+            OriginalTopLeft = Instance.AbsolutePosition;
             Instance.ClipsDescendants = true;
         end
     end);
@@ -233,6 +236,11 @@ function Library:MakeResizable(Instance, MinSize)
             local NewHeight = math.max(MinSize.Y, OriginalSize.Y + Delta.Y);
 
             Instance.Size = UDim2.fromOffset(NewWidth, NewHeight);
+
+            local newX = OriginalTopLeft.X + AnchorPoint.X * NewWidth
+            local newY = OriginalTopLeft.Y + AnchorPoint.Y * NewHeight
+            Instance.Position = UDim2.fromOffset(newX, newY)
+
             Instance.ClipsDescendants = false;
         end
     end);
@@ -307,28 +315,33 @@ function Library:AddToolTip(InfoStr, HoverInstance)
 end
 
 function Library:OnHighlight(HighlightInstance, Instance, Properties, PropertiesDefault)
-    HighlightInstance.MouseEnter:Connect(function()
-        local Reg = Library.RegistryMap[Instance];
+    local TweenInfoFast = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    local Tweens = {}
 
-        for Property, ColorIdx in next, Properties do
-            Instance[Property] = Library[ColorIdx] or ColorIdx;
+    local function applyProperties(propSet)
+        for Property, ColorIdx in next, propSet do
+            local targetColor = Library[ColorIdx] or ColorIdx
+            if Instance:IsA('GuiObject') and (Property == 'BackgroundColor3' or Property == 'BorderColor3' or Property == 'TextColor3') then
+                local tween = TweenService:Create(Instance, TweenInfoFast, {[Property] = targetColor})
+                table.insert(Tweens, tween)
+                tween:Play()
+            else
+                Instance[Property] = targetColor
+            end
 
+            local Reg = Library.RegistryMap[Instance]
             if Reg and Reg.Properties[Property] then
-                Reg.Properties[Property] = ColorIdx;
+                Reg.Properties[Property] = ColorIdx
             end;
         end;
+    end
+
+    HighlightInstance.MouseEnter:Connect(function()
+        applyProperties(Properties)
     end)
 
     HighlightInstance.MouseLeave:Connect(function()
-        local Reg = Library.RegistryMap[Instance];
-
-        for Property, ColorIdx in next, PropertiesDefault do
-            Instance[Property] = Library[ColorIdx] or ColorIdx;
-
-            if Reg and Reg.Properties[Property] then
-                Reg.Properties[Property] = ColorIdx;
-            end;
-        end;
+        applyProperties(PropertiesDefault)
     end)
 end;
 
@@ -2081,6 +2094,10 @@ do
             BorderColor3 = 'Black';
         });
 
+        SliderOuter:GetPropertyChangedSignal('AbsoluteSize'):Connect(function()
+            Slider:Display(true)
+        end)
+
         local SliderInner = Library:Create('Frame', {
             BackgroundColor3 = Library.MainColor;
             BorderColor3 = Library.OutlineColor;
@@ -2143,7 +2160,8 @@ do
             Fill.BorderColor3 = Library.AccentColorDark;
         end;
 
-        function Slider:Display()
+        local FillTween
+        function Slider:Display(SkipTween)
             local Suffix = Info.Suffix or '';
 
             if Info.Compact then
@@ -2157,7 +2175,20 @@ do
             local TrackSize = math.max(1, SliderOuter.AbsoluteSize.X - 2);
             Slider.MaxSize = TrackSize;
             local X = math.ceil(Library:MapValue(Slider.Value, Slider.Min, Slider.Max, 0, Slider.MaxSize));
-            Fill.Size = UDim2.new(0, X, 1, 0);
+
+            local targetSize = UDim2.new(0, X, 1, 0)
+            if SkipTween then
+                if FillTween then
+                    FillTween:Cancel()
+                end
+                Fill.Size = targetSize
+            else
+                if FillTween then
+                    FillTween:Cancel()
+                end
+                FillTween = TweenService:Create(Fill, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = targetSize})
+                FillTween:Play()
+            end
 
             HideBorderRight.Visible = not (X == Slider.MaxSize or X == 0);
         end;
@@ -2362,22 +2393,57 @@ do
             Parent = ScreenGui;
         });
 
-        local function RecalculateListPosition()
-            ListOuter.Position = UDim2.fromOffset(DropdownOuter.AbsolutePosition.X, DropdownOuter.AbsolutePosition.Y + DropdownOuter.Size.Y.Offset + 1);
-        end;
+        local currentListHeight = MAX_DROPDOWN_ITEMS * 20 + 2
+        local dropdownDesiredHeight = currentListHeight
 
         local function RecalculateListSize(YSize)
+            if YSize then
+                dropdownDesiredHeight = math.min(YSize, MAX_DROPDOWN_ITEMS * 20 + 2)
+            end
+
+            local screenSize = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1920, 1080)
             local width = math.max(100, math.min(DropdownOuter.AbsoluteSize.X, 450))
-            ListOuter.Size = UDim2.fromOffset(width, YSize or (MAX_DROPDOWN_ITEMS * 20 + 2))
+            local desiredHeight = dropdownDesiredHeight
+
+            local belowHeight = screenSize.Y - (DropdownOuter.AbsolutePosition.Y + DropdownOuter.AbsoluteSize.Y + 4)
+            local aboveHeight = DropdownOuter.AbsolutePosition.Y - 4
+
+            local visibleHeight = 0
+            if belowHeight >= desiredHeight then
+                visibleHeight = desiredHeight
+            elseif aboveHeight >= desiredHeight then
+                visibleHeight = desiredHeight
+            else
+                visibleHeight = math.max(math.min(belowHeight, desiredHeight), math.min(aboveHeight, desiredHeight), 30)
+            end
+
+            currentListHeight = math.max(math.min(desiredHeight, visibleHeight), 30)
+            ListOuter.Size = UDim2.fromOffset(width, currentListHeight)
         end;
 
-        RecalculateListPosition();
+        local function RecalculateListPosition()
+            local screenSize = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1920, 1080)
+            local width = ListOuter.AbsoluteSize.X
+            local x = math.clamp(DropdownOuter.AbsolutePosition.X, 4, screenSize.X - width - 4)
+            local yBelow = DropdownOuter.AbsolutePosition.Y + DropdownOuter.AbsoluteSize.Y + 1
+            local yAbove = DropdownOuter.AbsolutePosition.Y - currentListHeight - 1
+
+            if yBelow + currentListHeight <= screenSize.Y - 4 then
+                ListOuter.Position = UDim2.fromOffset(x, yBelow)
+            elseif yAbove >= 4 then
+                ListOuter.Position = UDim2.fromOffset(x, yAbove)
+            else
+                ListOuter.Position = UDim2.fromOffset(x, 4)
+            end
+        end;
+
         RecalculateListSize();
+        RecalculateListPosition();
 
         DropdownOuter:GetPropertyChangedSignal('AbsolutePosition'):Connect(RecalculateListPosition);
         DropdownOuter:GetPropertyChangedSignal('AbsoluteSize'):Connect(function()
-            RecalculateListPosition();
             RecalculateListSize();
+            RecalculateListPosition();
         end);
 
         local ListInner = Library:Create('Frame', {
@@ -2583,6 +2649,8 @@ do
         end;
 
         function Dropdown:OpenDropdown()
+            RecalculateListSize();
+            RecalculateListPosition();
             ListOuter.Visible = true;
             Library.OpenedFrames[ListOuter] = true;
             DropdownArrow.Rotation = 180;
@@ -3134,6 +3202,7 @@ function Library:CreateWindow(...)
     local TabListLayout = Library:Create('UIListLayout', {
         Padding = UDim.new(0, Config.TabPadding);
         FillDirection = Enum.FillDirection.Horizontal;
+        HorizontalAlignment = Enum.HorizontalAlignment.Center;
         SortOrder = Enum.SortOrder.LayoutOrder;
         Parent = TabArea;
     });
@@ -3146,7 +3215,19 @@ function Library:CreateWindow(...)
         ZIndex = 2;
         Parent = MainSectionInner;
     });
-    
+
+    local function UpdateTabContainerSize()
+        local width = MainSectionInner.AbsoluteSize.X - 16
+        local height = MainSectionInner.AbsoluteSize.Y - 38
+
+        if width < 0 then width = 0 end
+        if height < 0 then height = 0 end
+
+        TabContainer.Size = UDim2.fromOffset(width, height)
+    end
+
+    MainSectionInner:GetPropertyChangedSignal('AbsoluteSize'):Connect(UpdateTabContainerSize)
+    UpdateTabContainerSize()
 
     Library:AddToRegistry(TabContainer, {
         BackgroundColor3 = 'MainColor';
@@ -3252,10 +3333,17 @@ function Library:CreateWindow(...)
             Parent = RightSide;
         });
 
+        local function UpdateBothSidesCanvasSize()
+            local leftSize = LeftSide.UIListLayout.AbsoluteContentSize.Y
+            local rightSize = RightSide.UIListLayout.AbsoluteContentSize.Y
+            local maxSize = math.max(leftSize, rightSize)
+
+            LeftSide.CanvasSize = UDim2.fromOffset(0, maxSize)
+            RightSide.CanvasSize = UDim2.fromOffset(0, maxSize)
+        end
+
         for _, Side in next, { LeftSide, RightSide } do
-            Side:WaitForChild('UIListLayout'):GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
-                Side.CanvasSize = UDim2.fromOffset(0, Side.UIListLayout.AbsoluteContentSize.Y);
-            end);
+            Side:WaitForChild('UIListLayout'):GetPropertyChangedSignal('AbsoluteContentSize'):Connect(UpdateBothSidesCanvasSize)
         end;
 
         function Tab:ShowTab()
@@ -3275,6 +3363,20 @@ function Library:CreateWindow(...)
             Library.RegistryMap[TabButton].Properties.BackgroundColor3 = 'BackgroundColor';
             TabFrame.Visible = false;
         end;
+
+        local function UpdateTabButtonSizes()
+            local TabCount = 0
+            for _, _ in next, Window.Tabs do
+                TabCount = TabCount + 1
+            end
+            if TabCount <= 0 then return end
+
+            for _, TabObj in next, Window.Tabs do
+                if TabObj.Button then
+                    TabObj.Button.Size = UDim2.new(1 / TabCount, 0, 1, 0)
+                end
+            end
+        end
 
         function Tab:SetLayoutOrder(Position)
             TabButton.LayoutOrder = Position;
@@ -3589,7 +3691,10 @@ function Library:CreateWindow(...)
             Tab:ShowTab();
         end;
 
+        Tab.Button = TabButton;
         Window.Tabs[Name] = Tab;
+        UpdateTabButtonSizes();
+
         return Tab;
     end;
 
