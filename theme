@@ -203,7 +203,13 @@ local ThemeManager = {} do
 		local fields = { "FontColor", "MainColor", "AccentColor", "BackgroundColor", "OutlineColor" }
 
 		for _, field in next, fields do
-			theme[field] = Options[field].Value:ToHex()
+			if Options[field] and Options[field].Value and type(Options[field].Value.ToHex) == 'function' then
+				theme[field] = Options[field].Value:ToHex()
+			elseif Options[field] and Options[field].Value then
+				theme[field] = tostring(Options[field].Value)
+			else
+				theme[field] = "ffffff"
+			end
 		end
 
 		if Options.Font and type(Options.Font.Value) == 'string' then
