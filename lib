@@ -466,6 +466,23 @@ function Library:UpdateFontsUsingRegistry()
     end
 end;
 
+function Library:SetFontSize(Size)
+    Size = tonumber(Size)
+    if not Size then
+        return
+    end
+
+    Library.FontSize = Size
+
+    for _, Object in next, Library.ScreenGui:GetDescendants() do
+        if Object:IsA('TextLabel') or Object:IsA('TextButton') or Object:IsA('TextBox') or Object:IsA('TextScaledLabel') then
+            pcall(function()
+                Object.TextSize = Size
+            end)
+        end
+    end
+end;
+
 function Library:GiveSignal(Signal)
     -- Only used for signals not attached to library instances, as those should be cleaned up on object destruction by Roblox
     table.insert(Library.Signals, Signal)
@@ -505,6 +522,28 @@ do
         local ToggleLabel = self.TextLabel;
         -- local Container = self.Container;
 
+        Info = Info or {}
+        Info.Gradient = Info.Gradient or false
+
+        -- In gradient mode, allow default stops as table; also pick first color for initialization.
+        if Info.Gradient then
+            local defaultStops = nil
+            if type(Info.Default) == 'table' then
+                defaultStops = Info.Default.Stops or Info.Default
+            end
+
+            if type(defaultStops) == 'table' and #defaultStops > 0 then
+                Info.Default = defaultStops[1].color or Color3.new(1, 1, 1)
+                Info.Transparency = defaultStops[1].transparency or 0
+            elseif typeof(Info.Default) ~= 'Color3' then
+                Info.Default = Color3.new(1, 1, 1)
+            end
+        else
+            if typeof(Info.Default) ~= 'Color3' then
+                Info.Default = Color3.new(1, 1, 1)
+            end
+        end
+
         assert(Info.Default, 'AddColorPicker: Missing default value.');
 
         local ColorPicker = {
@@ -513,9 +552,18 @@ do
             Type = 'ColorPicker';
             Title = type(Info.Title) == 'string' and Info.Title or 'Color picker',
             Callback = Info.Callback or function(Color) end;
+            Gradient = Info.Gradient or false;
+            Stops = {};
         };
 
+        local GradientBar, GradientUI, DotsContainer, GradientStops, SelectedStop, HolderGradient
+        GradientStops = {}
+
         function ColorPicker:SetHSVFromRGB(Color)
+            if typeof(Color) ~= 'Color3' then
+                Color = Color3.new(1, 1, 1)
+            end
+
             local H, S, V = Color3.toHSV(Color);
 
             ColorPicker.Hue = H;
@@ -549,12 +597,17 @@ do
         -- There was some issue which caused RelativeOffset to be way off
         -- Thus the color picker would never show
 
+        local PickerHeight = (Info.Transparency and 271 or 253)
+        if Info.Gradient then
+            PickerHeight = PickerHeight + 72
+        end
+
         local PickerFrameOuter = Library:Create('Frame', {
             Name = 'Color';
             BackgroundColor3 = Color3.new(1, 1, 1);
             BorderColor3 = Color3.new(0, 0, 0);
             Position = UDim2.fromOffset(DisplayFrame.AbsolutePosition.X, DisplayFrame.AbsolutePosition.Y + 18),
-            Size = UDim2.fromOffset(230, Info.Transparency and 271 or 253);
+            Size = UDim2.fromOffset(230, PickerHeight);
             Visible = false;
             ZIndex = 15;
             Parent = ScreenGui,
@@ -885,6 +938,249 @@ do
 
         end
 
+        local function UpdateGradientRender()
+            if not GradientUI then
+                return
+            end
+
+            table.sort(GradientStops, function(a, b)
+                return (tonumber(a and a.pos) or 0) < (tonumber(b and b.pos) or 0)
+            end)
+
+            local stops = {}
+            for _, s in ipairs(GradientStops) do
+                local pos = math.clamp(tonumber(s.pos) or 0, 0, 1)
+                local col = s.color or Color3.new(1, 1, 1)
+                local transp = math.clamp(tonumber(s.transparency) or 0, 0, 1)
+                table.insert(stops, { pos = pos, color = col, transparency = transp })
+            end
+
+            if #stops == 0 then
+                stops = {
+                    { pos = 0, color = Color3.new(1, 1, 1), transparency = 0 },
+                    { pos = 1, color = Color3.new(1, 1, 1), transparency = 0 },
+                }
+            elseif #stops == 1 then
+                local s = stops[1]
+                stops = {
+                    { pos = 0, color = s.color, transparency = s.transparency },
+                    { pos = 1, color = s.color, transparency = s.transparency },
+                }
+            else
+                if stops[1].pos > 0 then
+                    table.insert(stops, 1, { pos = 0, color = stops[1].color, transparency = stops[1].transparency })
+                end
+                if stops[#stops].pos < 1 then
+                    table.insert(stops, { pos = 1, color = stops[#stops].color, transparency = stops[#stops].transparency })
+                end
+            end
+
+            local keypoints = {}
+            local tpoints = {}
+            for _, s in ipairs(stops) do
+                table.insert(keypoints, ColorSequenceKeypoint.new(s.pos, s.color))
+                table.insert(tpoints, NumberSequenceKeypoint.new(s.pos, s.transparency))
+            end
+
+            GradientUI.Color = ColorSequence.new(keypoints)
+            GradientUI.Transparency = NumberSequence.new(tpoints)
+
+            if HolderGradient and HolderGradient.Parent then
+                HolderGradient.Color = GradientUI.Color
+                HolderGradient.Transparency = GradientUI.Transparency
+            end
+
+            for _, s in ipairs(GradientStops) do
+                if s and s.dot and s.dot.Parent then
+                    s.dot.Position = UDim2.new(math.clamp(tonumber(s.pos) or 0, 0, 1), 0, 0.5, 0)
+                    if s.color then
+                        s.dot.BackgroundColor3 = s.color
+                        s.dot.BorderColor3 = Library:GetDarkerColor(s.color)
+                    end
+                    if s.outline then
+                        s.outline.Color = (s == SelectedStop) and Library.AccentColor or Library.OutlineColor
+                    end
+                end
+            end
+        end
+
+        local function CreateGradientDot(stop)
+            if not GradientBar then
+                return
+            end
+
+            DotsContainer = DotsContainer or Library:Create('Frame', {
+                BackgroundTransparency = 1;
+                Size = UDim2.new(1, 0, 1, 0);
+                Parent = GradientBar;
+            })
+
+            local Dot = Library:Create('ImageButton', {
+                Size = UDim2.fromOffset(14, 14);
+                AnchorPoint = Vector2.new(0.5, 0.5);
+                Position = UDim2.new(math.clamp(tonumber(stop.pos) or 0, 0, 1), 0, 0.5, 0);
+                BackgroundColor3 = stop.color or Color3.new(1, 1, 1);
+                BorderColor3 = Library:GetDarkerColor(stop.color or Color3.new(1, 1, 1));
+                AutoButtonColor = false;
+                ZIndex = 20;
+                Parent = DotsContainer;
+            })
+
+            Library:Create('UICorner', { CornerRadius = UDim.new(0, Library.CornerRadius), Parent = Dot });
+            local OutlineStroke = Library:Create('UIStroke', { Color = Library.OutlineColor, Thickness = 1, Parent = Dot });
+            Library:AddToRegistry(OutlineStroke, { Color = 'OutlineColor' })
+
+            stop.dot = Dot
+            stop.outline = OutlineStroke
+
+            Dot.MouseButton1Click:Connect(function()
+                SelectedStop = stop
+                ColorPicker:SetValueRGB(stop.color or Color3.new(1, 1, 1), stop.transparency or 0)
+                UpdateGradientRender()
+            end)
+
+            Dot.InputBegan:Connect(function(Input)
+                if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+                    while InputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) do
+                        if not GradientBar then
+                            break
+                        end
+
+                        local MinX = GradientBar.AbsolutePosition.X
+                        local MaxX = MinX + GradientBar.AbsoluteSize.X
+                        if MaxX - MinX <= 0 then
+                            break
+                        end
+
+                        local mouseX = math.clamp(Mouse.X, MinX, MaxX)
+                        stop.pos = (mouseX - MinX) / (MaxX - MinX)
+                        UpdateGradientRender()
+                        RenderStepped:Wait()
+                    end
+
+                    Library:AttemptSave()
+                end
+            end)
+
+            return Dot
+        end
+
+        local function AddGradientStop(pos, color, transparency)
+            local p = math.clamp(tonumber(pos) or 0.5, 0, 1)
+            local col = color or ColorPicker.Value or Color3.new(1, 1, 1)
+            local transp = math.clamp(tonumber(transparency) or ColorPicker.Transparency or 0, 0, 1)
+
+            local stop = { pos = p, color = col, transparency = transp }
+            table.insert(GradientStops, stop)
+
+            if GradientBar then
+                CreateGradientDot(stop)
+            end
+
+            SelectedStop = stop
+            UpdateGradientRender()
+            if type(ColorPicker.Update) == 'function' then
+                ColorPicker:Update()
+            end
+        end
+
+        if Info.Gradient then
+            HolderGradient = Library:Create('UIGradient', { Parent = DisplayFrame })
+
+            local gradientStartY = Info.Transparency and 272 or 254
+            local GradientHolder = Library:Create('Frame', {
+                BackgroundTransparency = 1;
+                Position = UDim2.fromOffset(4, gradientStartY);
+                Size = UDim2.new(1, -8, 0, 40);
+                Parent = PickerFrameInner;
+            })
+
+            local PlusButton = Library:Create('TextButton', {
+                Text = '+';
+                TextSize = 15;
+                Size = UDim2.fromOffset(20, 20);
+                BackgroundTransparency = 0.5;
+                BackgroundColor3 = Library.MainColor;
+                BorderColor3 = Library.OutlineColor;
+                Parent = GradientHolder;
+            })
+
+            GradientBar = Library:Create('Frame', {
+                BackgroundColor3 = Color3.new(1, 1, 1);
+                BorderColor3 = Library.OutlineColor;
+                BorderMode = Enum.BorderMode.Inset;
+                Position = UDim2.fromOffset(26, 10);
+                Size = UDim2.new(1, -56, 0, 20);
+                Parent = GradientHolder;
+            })
+
+            GradientUI = Library:Create('UIGradient', { Parent = GradientBar })
+            DotsContainer = Library:Create('Frame', { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, 0), Parent = GradientBar })
+
+            local MinusButton = Library:Create('TextButton', {
+                Text = '-';
+                TextSize = 15;
+                Size = UDim2.fromOffset(20, 20);
+                BackgroundTransparency = 0.5;
+                BackgroundColor3 = Library.MainColor;
+                BorderColor3 = Library.OutlineColor;
+                Position = UDim2.fromOffset(-22, 0);
+                AnchorPoint = Vector2.new(1, 0);
+                Parent = GradientHolder;
+            })
+
+            PlusButton.MouseButton1Click:Connect(function()
+                AddGradientStop(0.5)
+            end)
+
+            MinusButton.MouseButton1Click:Connect(function()
+                if not SelectedStop then
+                    return
+                end
+
+                if #GradientStops <= 2 then
+                    return
+                end
+
+                local idx
+                for i, s in ipairs(GradientStops) do
+                    if s == SelectedStop then
+                        idx = i
+                        break
+                    end
+                end
+
+                if idx then
+                    if SelectedStop.dot and SelectedStop.dot.Parent then
+                        SelectedStop.dot:Destroy()
+                    end
+
+                    table.remove(GradientStops, idx)
+                    SelectedStop = GradientStops[1]
+                    UpdateGradientRender()
+                    ColorPicker:Update()
+                end
+            end)
+
+            -- initial stops (use provided gradient setup if available)
+            if type(Info.Default) == 'table' then
+                local defaultStops = Info.Default.Stops or Info.Default
+                if type(defaultStops) == 'table' and #defaultStops > 0 then
+                    for _, stop in ipairs(defaultStops) do
+                        if type(stop) == 'table' and stop.color then
+                            AddGradientStop(stop.pos, stop.color, stop.transparency)
+                        end
+                    end
+                else
+                    AddGradientStop(0)
+                    AddGradientStop(1)
+                end
+            else
+                AddGradientStop(0)
+                AddGradientStop(1)
+            end
+        end
+
         Library:AddToRegistry(PickerFrameInner, { BackgroundColor3 = 'BackgroundColor'; BorderColor3 = 'OutlineColor'; });
         Library:AddToRegistry(Highlight, { BackgroundColor3 = 'AccentColor'; });
         Library:AddToRegistry(SatVibMapInner, { BackgroundColor3 = 'BackgroundColor'; BorderColor3 = 'OutlineColor'; });
@@ -932,11 +1228,25 @@ do
             ColorPicker.Value = Color3.fromHSV(ColorPicker.Hue, ColorPicker.Sat, ColorPicker.Vib);
             SatVibMap.BackgroundColor3 = Color3.fromHSV(ColorPicker.Hue, 1, 1);
 
-            Library:Create(DisplayFrame, {
-                BackgroundColor3 = ColorPicker.Value;
-                BackgroundTransparency = ColorPicker.Transparency;
-                BorderColor3 = Library:GetDarkerColor(ColorPicker.Value);
-            });
+            if Info.Gradient then
+                Library:Create(DisplayFrame, {
+                    BackgroundColor3 = Color3.new(1, 1, 1);
+                    BackgroundTransparency = 0;
+                    BorderColor3 = Library:GetDarkerColor(Color3.new(1, 1, 1));
+                });
+
+                if HolderGradient and SelectedStop then
+                    SelectedStop.color = ColorPicker.Value
+                    SelectedStop.transparency = ColorPicker.Transparency
+                    UpdateGradientRender()
+                end
+            else
+                Library:Create(DisplayFrame, {
+                    BackgroundColor3 = ColorPicker.Value;
+                    BackgroundTransparency = ColorPicker.Transparency;
+                    BorderColor3 = Library:GetDarkerColor(ColorPicker.Value);
+                });
+            end
 
             if TransparencyBoxInner then
                 TransparencyBoxInner.BackgroundColor3 = ColorPicker.Value;
@@ -946,17 +1256,38 @@ do
             CursorOuter.Position = UDim2.new(ColorPicker.Sat, 0, 1 - ColorPicker.Vib, 0);
             HueCursor.Position = UDim2.new(0, 0, ColorPicker.Hue, 0);
 
-            HueBox.Text = '#' .. ColorPicker.Value:ToHex()
-            RgbBox.Text = table.concat({ math.floor(ColorPicker.Value.R * 255), math.floor(ColorPicker.Value.G * 255), math.floor(ColorPicker.Value.B * 255) }, ', ')
+            local CurrentValue = (typeof(ColorPicker.Value) == 'Color3') and ColorPicker.Value or Color3.new(1, 1, 1)
+            HueBox.Text = '#' .. CurrentValue:ToHex()
+            RgbBox.Text = table.concat({ math.floor(CurrentValue.R * 255), math.floor(CurrentValue.G * 255), math.floor(CurrentValue.B * 255) }, ', ')
 
-            Library:SafeCallback(ColorPicker.Callback, ColorPicker.Value);
-            Library:SafeCallback(ColorPicker.Changed, ColorPicker.Value);
+            if Info.Gradient then
+                Library:SafeCallback(ColorPicker.Callback, GradientStops);
+                Library:SafeCallback(ColorPicker.Changed, GradientStops);
+            else
+                Library:SafeCallback(ColorPicker.Callback, ColorPicker.Value);
+                Library:SafeCallback(ColorPicker.Changed, ColorPicker.Value);
+            end
         end;
 
         function ColorPicker:OnChanged(Func)
             ColorPicker.Changed = Func;
-            Func(ColorPicker.Value)
+            if Info.Gradient then
+                Func(GradientStops)
+            else
+                Func(ColorPicker.Value)
+            end
         end;
+
+        function ColorPicker:GetStops()
+            if Info.Gradient then
+                return GradientStops
+            end
+            return nil
+        end
+
+        function ColorPicker:Update()
+            ColorPicker:Display()
+        end
 
         function ColorPicker:Show()
             for Frame, Val in next, Library.OpenedFrames do
@@ -984,6 +1315,10 @@ do
         end;
 
         function ColorPicker:SetValueRGB(Color, Transparency)
+            if typeof(Color) ~= 'Color3' then
+                Color = Color3.new(1, 1, 1)
+            end
+
             ColorPicker.Transparency = Transparency or 0;
             ColorPicker:SetHSVFromRGB(Color);
             ColorPicker:Display();
@@ -1090,6 +1425,41 @@ do
         Options[Idx] = ColorPicker;
 
         return self;
+    end;
+
+    function Funcs:AddGradientPicker(Idx, Info)
+        Info = Info or {}
+        Info.Gradient = true
+        -- Default Info.Default fallback handled by AddColorPicker
+        return self:AddColorPicker(Idx, Info)
+    end;
+
+    function Funcs:SetFontSize(Size)
+        Size = tonumber(Size)
+        if not Size then
+            return self
+        end
+
+        -- For elements that expose a TextLabel instance
+        if type(self.TextLabel) == 'userdata' and self.TextLabel:IsA('TextLabel') then
+            self.TextLabel.TextSize = Size
+        end
+
+        -- For direct labels created by AddLabel
+        if type(self.Container) == 'userdata' and self.Container:IsA('TextLabel') then
+            self.Container.TextSize = Size
+        end
+
+        -- For ColorPicker inline display label
+        if type(self.LocalTextLabel) == 'userdata' and self.LocalTextLabel:IsA('TextLabel') then
+            self.LocalTextLabel.TextSize = Size
+        end
+
+        if type(self.Update) == 'function' then
+            pcall(self.Update, self)
+        end
+
+        return self
     end;
 
     function Funcs:AddKeyPicker(Idx, Info)
@@ -2049,14 +2419,18 @@ do
     end;
 
     function Funcs:AddSlider(Idx, Info)
-        assert(Info.Default, 'AddSlider: Missing default value.');
-        assert(Info.Text, 'AddSlider: Missing slider text.');
-        assert(Info.Min, 'AddSlider: Missing minimum value.');
-        assert(Info.Max, 'AddSlider: Missing maximum value.');
-        assert(Info.Rounding, 'AddSlider: Missing rounding value.');
+        Info = Info or {}
+        Info.Min = tonumber(Info.Min) or 0
+        Info.Max = tonumber(Info.Max) or 100
+        if Info.Max < Info.Min then
+            Info.Max, Info.Min = Info.Min, Info.Max
+        end
+        Info.Default = tonumber(Info.Default) or Info.Min
+        Info.Rounding = tonumber(Info.Rounding) or 1
+        Info.Text = type(Info.Text) == 'string' and Info.Text or 'Slider'
 
         local Slider = {
-            Value = Info.Default;
+            Value = math.clamp(Info.Default, Info.Min, Info.Max);
             Min = Info.Min;
             Max = Info.Max;
             Rounding = Info.Rounding;
@@ -2755,6 +3129,7 @@ do
         Groupbox:Resize();
 
         Options[Idx] = Dropdown;
+        setmetatable(Dropdown, BaseAddons);
 
         return Dropdown;
     end;
@@ -3215,24 +3590,36 @@ function Library:CreateWindow(...)
         ZIndex = 2;
         Parent = MainSectionInner;
     });
-
-    local function UpdateTabContainerSize()
-        local width = MainSectionInner.AbsoluteSize.X - 16
-        local height = MainSectionInner.AbsoluteSize.Y - 38
-
-        if width < 0 then width = 0 end
-        if height < 0 then height = 0 end
-
-        TabContainer.Size = UDim2.fromOffset(width, height)
-    end
-
-    MainSectionInner:GetPropertyChangedSignal('AbsoluteSize'):Connect(UpdateTabContainerSize)
-    UpdateTabContainerSize()
+    
 
     Library:AddToRegistry(TabContainer, {
         BackgroundColor3 = 'MainColor';
         BorderColor3 = 'OutlineColor';
     });
+
+    local function UpdateTabButtonSizes()
+        local TabCount = 0
+        for _, _ in next, Window.Tabs do
+            TabCount = TabCount + 1
+        end
+        if TabCount <= 0 then
+            return
+        end
+
+        local totalPadding = Config.TabPadding * math.max(0, TabCount - 1)
+        local availableWidth = math.max(0, TabArea.AbsoluteSize.X - totalPadding)
+        local perButtonWidth = math.floor(availableWidth / TabCount)
+
+        for _, TabObj in next, Window.Tabs do
+            if TabObj.Button and TabObj.Button:IsA('GuiObject') then
+                TabObj.Button.Size = UDim2.new(0, perButtonWidth, 1, 0)
+            end
+        end
+    end
+
+    TabArea:GetPropertyChangedSignal('AbsoluteSize'):Connect(function()
+        UpdateTabButtonSizes()
+    end)
 
     function Window:SetWindowTitle(Title)
         WindowLabel.Text = Title;
@@ -3346,6 +3733,10 @@ function Library:CreateWindow(...)
             Side:WaitForChild('UIListLayout'):GetPropertyChangedSignal('AbsoluteContentSize'):Connect(UpdateBothSidesCanvasSize)
         end;
 
+        TabArea:GetPropertyChangedSignal('AbsoluteSize'):Connect(function()
+            UpdateTabButtonSizes()
+        end)
+
         function Tab:ShowTab()
             for _, Tab in next, Window.Tabs do
                 Tab:HideTab();
@@ -3363,20 +3754,6 @@ function Library:CreateWindow(...)
             Library.RegistryMap[TabButton].Properties.BackgroundColor3 = 'BackgroundColor';
             TabFrame.Visible = false;
         end;
-
-        local function UpdateTabButtonSizes()
-            local TabCount = 0
-            for _, _ in next, Window.Tabs do
-                TabCount = TabCount + 1
-            end
-            if TabCount <= 0 then return end
-
-            for _, TabObj in next, Window.Tabs do
-                if TabObj.Button then
-                    TabObj.Button.Size = UDim2.new(1 / TabCount, 0, 1, 0)
-                end
-            end
-        end
 
         function Tab:SetLayoutOrder(Position)
             TabButton.LayoutOrder = Position;
