@@ -325,7 +325,8 @@ local ThemeManager = {} do
 			FontNames = { 'Default' }
 		end
 
-		groupbox:AddLabel('Font')	:AddDropdown('FontName', { Text = 'Font', Values = FontNames, Default = (FontNames[1] or 1), AllowNull = true })
+		local DefaultFont = (table.find(FontNames, 'proggy-tiny') and 'proggy-tiny') or (FontNames[1] or 1)
+		groupbox:AddLabel('Font')	:AddDropdown('FontName', { Text = 'Font', Values = FontNames, Default = DefaultFont, AllowNull = true })
 
 		self.Library.Options.FontName:OnChanged(function()
 			local name = self.Library.Options.FontName.Value
