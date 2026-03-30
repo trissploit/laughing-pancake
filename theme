@@ -165,7 +165,12 @@ local ThemeManager = {} do
 				ApplyBackgroundVideo(col)
 			elseif idx == "FontName" then
 				-- font name is stored as a plain string
-				self.Library.FontFace = (self.Library.GetFontFromName and self.Library:GetFontFromName(col)) or nil
+				local fontObj = (self.Library.GetFontFromName and self.Library:GetFontFromName(col)) or nil
+				if self.Library.SetFontFace then
+					self.Library:SetFontFace(fontObj)
+				else
+					self.Library.FontFace = fontObj
+				end
 				if self.Library.Options[idx] then
 					self.Library.Options[idx]:SetValue(col)
 				end
@@ -191,7 +196,12 @@ local ThemeManager = {} do
 			if self.Library.Options and self.Library.Options[field] then
 				if field == "FontName" then
 					local val = self.Library.Options[field].Value
-					self.Library.FontFace = (self.Library.GetFontFromName and self.Library:GetFontFromName(val)) or nil
+					local fontObj = (self.Library.GetFontFromName and self.Library:GetFontFromName(val)) or nil
+					if self.Library.SetFontFace then
+						self.Library:SetFontFace(fontObj)
+					else
+						self.Library.FontFace = fontObj
+					end
 				else
 					self.Library[field] = self.Library.Options[field].Value
 					if field == "VideoLink" then
@@ -325,16 +335,28 @@ local ThemeManager = {} do
 			FontNames = { 'Default' }
 		end
 
-		local DefaultFont = (table.find(FontNames, 'proggy-tiny') and 'proggy-tiny') or (FontNames[1] or 1)
-		groupbox:AddLabel('Font')	:AddDropdown('FontName', { Text = 'Font', Values = FontNames, Default = DefaultFont, AllowNull = true })
+		local defaultFontName = nil
+		if table.find(FontNames, 'proggy-tiny') then
+			defaultFontName = 'proggy-tiny'
+		else
+			defaultFontName = (FontNames[1] or 1)
+		end
+
+		groupbox:AddLabel('Font')	:AddDropdown('FontName', { Text = 'Font', Values = FontNames, Default = defaultFontName, AllowNull = true })
 
 		self.Library.Options.FontName:OnChanged(function()
 			local name = self.Library.Options.FontName.Value
+			local fontObj = nil
 			if not name or name == '' then
-				self.Library.FontFace = nil
+				fontObj = nil
 			else
 				local ok, f = pcall(function() return self.Library:GetFontFromName(name) end)
-				self.Library.FontFace = (ok and f) and f or nil
+				fontObj = (ok and f) and f or nil
+			end
+			if self.Library.SetFontFace then
+				self.Library:SetFontFace(fontObj)
+			else
+				self.Library.FontFace = fontObj
 			end
 			self:ThemeUpdate()
 		end)
