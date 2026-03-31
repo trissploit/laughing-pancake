@@ -174,15 +174,28 @@ local ThemeManager = {} do
 					-- Non-color fields
 					if idx == "Font" then
 						if type(col) == "string" then
-							if Enum.Font[col] then
-								self.Library.Font = Enum.Font[col]
+							local ok, enumVal = pcall(function() return Enum.Font[col] end)
+							if ok and enumVal then
+								self.Library.Font = enumVal
+								if self.Library.Options.Font then self.Library.Options.Font:SetValue(col) end
 							elseif getgenv and getgenv().Fonts and getgenv().Fonts[col] then
 								self.Library.Font = getgenv().Fonts[col]
+								if self.Library.Options.Font then self.Library.Options.Font:SetValue(col) end
+							else
+								-- fallback to existing or default font
+								self.Library.Font = self.Library.Font or Enum.Font.Code
+								if self.Library.Options.Font then
+									local fallbackName = (self.Library.Font.Name or tostring(self.Library.Font))
+									self.Library.Options.Font:SetValue(fallbackName)
+								end
 							end
 						else
 							self.Library.Font = col
+							if self.Library.Options.Font then
+								local fallbackName = (self.Library.Font.Name or tostring(self.Library.Font))
+								self.Library.Options.Font:SetValue(fallbackName)
+							end
 						end
-						if self.Library.Options.Font then self.Library.Options.Font:SetValue(col) end
 					elseif idx:find("EasingStyle") then
 						if type(col) == "string" and Enum.EasingStyle[col] then
 							self.Library[idx] = Enum.EasingStyle[col]
@@ -220,10 +233,15 @@ local ThemeManager = {} do
 					ApplyBackgroundVideo(val)
 				elseif field == "Font" then
 					if type(val) == "string" then
-						if Enum.Font[val] then
-							self.Library.Font = Enum.Font[val]
+						local ok, enumVal = pcall(function() return Enum.Font[val] end)
+						if ok and enumVal then
+							self.Library.Font = enumVal
 						elseif getgenv and getgenv().Fonts and getgenv().Fonts[val] then
 							self.Library.Font = getgenv().Fonts[val]
+						else
+							-- fallback to default Enum font
+							self.Library.Font = Enum.Font.Code
+							if self.Library.Options.Font then self.Library.Options.Font:SetValue("Code") end
 						end
 					else
 						self.Library.Font = val
@@ -371,7 +389,14 @@ local ThemeManager = {} do
 		groupbox:AddLabel('Font color')	:AddColorPicker('FontColor', { Default = self.Library.FontColor });
 
 		-- Font selector (uses Enum.Font names or custom fonts available via getgenv().Fonts)
-		local FontList = { 'Code', 'SourceSans', 'SourceSansBold', 'Gotham', 'Tahoma', 'Arcade', 'Roboto', 'Rubik', 'ProggyClean', 'SmallestPixel', 'Minecraftia' }
+		local FontList = { 'Code', 'SourceSans', 'SourceSansBold', 'Gotham', 'Tahoma', 'Arcade', 'Roboto', 'Rubik', 'ProggyClean', 'SmallestPixel' }
+		if getgenv and getgenv().Fonts then
+			for fname, _ in pairs(getgenv().Fonts) do
+				if not table.find(FontList, fname) then
+					table.insert(FontList, fname)
+				end
+			end
+		end
 		local CurrentFontName = (self.Library.Font and (self.Library.Font.Name or tostring(self.Library.Font))) or 'Code'
 		if not table.find(FontList, CurrentFontName) then table.insert(FontList, 1, CurrentFontName) end
 		groupbox:AddDropdown('Font', { Text = 'Font', Values = FontList, Default = CurrentFontName })
