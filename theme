@@ -48,7 +48,7 @@ if typeof(clonefunction) == "function" then
 end
 
 local ThemeManager = {} do
-	local ThemeFields = { "Font", "FontColor", "MainColor", "AccentColor", "BackgroundColor", "OutlineColor", "VideoLink" }
+	local ThemeFields = { "FontColor", "Font", "MainColor", "AccentColor", "BackgroundColor", "OutlineColor", "VideoLink" }
 	ThemeManager.Folder = "LinoriaLibSettings"
 	-- if not isfolder(ThemeManager.Folder) then makefolder(ThemeManager.Folder) end
 
@@ -164,18 +164,15 @@ local ThemeManager = {} do
 				
 				ApplyBackgroundVideo(col)
 			elseif idx == "Font" then
-				-- font stored as a string name in custom themes / exports
-				if self.Library.Options and self.Library.Options.Font then
-					self.Library.Options.Font:SetValue(col)
-				end
-				local fonts = self.Library.Fonts or (getgenv and getgenv().Fonts)
-				if fonts and fonts[col] then
-					if self.Library.Scheme then self.Library.Scheme.Font = fonts[col] end
-					-- set Font object for registry consumers
-					self.Library.Font = fonts[col]
-					pcall(function() local enumVal = Enum.Font[col]; if enumVal then self.Library.FontEnum = enumVal end end)
+				-- Font stored as a string name in themes
+				self.Library.FontName = col
+				if self.Library.Fonts and self.Library.Fonts[col] then
+					self.Library.Font = self.Library.Fonts[col]
 				else
-					pcall(function() local enumVal = Enum.Font[col]; if enumVal then self.Library.Font = enumVal end end)
+					-- fallback: do nothing
+				end
+				if self.Library.Options[idx] then
+					self.Library.Options[idx]:SetValue(col)
 				end
 			else
 				self.Library[idx] = Color3.fromHex(col)
@@ -197,27 +194,26 @@ local ThemeManager = {} do
 
 		for i, field in next, ThemeFields do
 			if self.Library.Options and self.Library.Options[field] then
-				if field == "VideoLink" then
-					ApplyBackgroundVideo(self.Library.Options[field].Value)
-				elseif field == "Font" then
-					local name = self.Library.Options[field].Value
-					local fonts = self.Library.Fonts or (getgenv and getgenv().Fonts)
-					if fonts and fonts[name] then
-						if self.Library.Scheme then self.Library.Scheme.Font = fonts[name] end
-						-- set Font object for registry consumers
-						self.Library.Font = fonts[name]
-						pcall(function() local enumVal = Enum.Font[name]; if enumVal then self.Library.FontEnum = enumVal end end)
-					else
-						pcall(function() local enumVal = Enum.Font[name]; if enumVal then self.Library.Font = enumVal end end)
+				local val = self.Library.Options[field].Value
+				if field == "Font" then
+					self.Library.FontName = val
+					if self.Library.Fonts and self.Library.Fonts[val] then
+						self.Library.Font = self.Library.Fonts[val]
 					end
 				else
-					self.Library[field] = self.Library.Options[field].Value
+					self.Library[field] = val
+					if field == "VideoLink" then
+						ApplyBackgroundVideo(val)
+					end
 				end
 			end
 		end
 
 		self.Library.AccentColorDark = self.Library:GetDarkerColor(self.Library.AccentColor);
 		self.Library:UpdateColorsUsingRegistry()
+		if self.Library.UpdateFonts then
+			self.Library:UpdateFonts()
+		end
 	end
 
 	--// Get, Load, Save, Delete, Refresh \\--
@@ -275,7 +271,7 @@ local ThemeManager = {} do
 			if field == "VideoLink" then
 				theme[field] = self.Library.Options[field].Value
 			elseif field == "Font" then
-				theme[field] = self.Library.Options[field].Value
+				theme[field] = tostring(self.Library.Options[field].Value)
 			else
 				theme[field] = self.Library.Options[field].Value:ToHex()
 			end
@@ -332,27 +328,32 @@ local ThemeManager = {} do
 		groupbox:AddLabel('Accent color'):AddColorPicker('AccentColor', { Default = self.Library.AccentColor });
 		groupbox:AddLabel('Outline color'):AddColorPicker('OutlineColor', { Default = self.Library.OutlineColor });
 		groupbox:AddLabel('Font color')	:AddColorPicker('FontColor', { Default = self.Library.FontColor });
-		groupbox:AddInput('VideoLink', { Text = '.webm Video Background (Link)', Default = self.Library.VideoLink });
 
-		-- Font selector (uses neversave / exposed fonts if available)
-		local FontsArray = {}
-		local fontsSource = self.Library.Fonts or (getgenv and getgenv().Fonts)
-		local fontOrder = self.Library.FontIndexes or (getgenv and getgenv().FontIndexes)
-		if fontsSource then
-			if fontOrder then
-				for i = 1, #fontOrder do
-					local name = fontOrder[i]
-					if fontsSource[name] then table.insert(FontsArray, name) end
-				end
-			else
-				for name in next, fontsSource do table.insert(FontsArray, name) end
-				table.sort(FontsArray)
+		-- Font selector (populated from Library.FontList)
+		local FontValues = {}
+		if self.Library and self.Library.FontList and #self.Library.FontList > 0 then
+			for _, v in ipairs(self.Library.FontList) do
+				table.insert(FontValues, v)
 			end
 		else
-			for i = 1, #Enum.Font:GetEnumItems() do table.insert(FontsArray, Enum.Font:GetEnumItems()[i].Name) end
+			FontValues = { 'Code' }
 		end
 
-		groupbox:AddLabel('Font')	:AddDropdown('Font', { Text = 'Font', Values = FontsArray, Default = 1 })
+		local defaultFont = self.Library.FontName or (FontValues[1] or 'Code')
+		local defaultIdx = 1
+		for i, v in ipairs(FontValues) do
+			if v == defaultFont then
+				defaultIdx = i
+				break
+			end
+		end
+
+		groupbox:AddLabel('Font')	:AddDropdown('Font', { Text = 'Font', Values = FontValues, Default = defaultIdx })
+		if self.Library.Options.Font then
+			self.Library.Options.Font:SetValue(defaultFont)
+		end
+
+		groupbox:AddInput('VideoLink', { Text = '.webm Video Background (Link)', Default = self.Library.VideoLink });
 		
 		local ThemesArray = {}
 		for Name, Theme in next, self.BuiltInThemes do
@@ -372,47 +373,6 @@ local ThemeManager = {} do
 		self.Library.Options.ThemeManager_ThemeList:OnChanged(function()
 			self:ApplyTheme(self.Library.Options.ThemeManager_ThemeList.Value)
 		end)
-
-		-- Apply font changes when the selector changes
-		if self.Library.Options.Font then
-			self.Library.Options.Font:OnChanged(function()
-				local name = self.Library.Options.Font.Value
-				local fonts = self.Library.Fonts or (getgenv and getgenv().Fonts)
-				if fonts and fonts[name] then
-					if self.Library.Scheme then self.Library.Scheme.Font = fonts[name] end
-					-- try to set Enum fallback if available
-					pcall(function()
-						local enumVal = Enum.Font[name]
-						if enumVal then self.Library.Font = enumVal end
-					end)
-				else
-					-- fallback to Enum.Font if the name matches
-					pcall(function()
-						local enumVal = Enum.Font[name]
-						if enumVal then self.Library.Font = enumVal end
-					end)
-				end
-				if self.Library.UpdateColorsUsingRegistry then self.Library:UpdateColorsUsingRegistry() end
-			end)
-
-			-- try to set current font selection based on library values
-			local function trySetInitialFont()
-				local currentName
-				local fonts = self.Library.Fonts or (getgenv and getgenv().Fonts)
-				if fonts and self.Library.Scheme and self.Library.Scheme.Font then
-					for k,v in next, fonts do if v == self.Library.Scheme.Font then currentName = k; break end end
-				end
-				if not currentName and self.Library.Font then
-					pcall(function() currentName = tostring(self.Library.Font.Name) end)
-				end
-				if currentName then
-					local idx = table.find(FontsArray, currentName)
-					if idx then self.Library.Options.Font:SetValue(FontsArray[idx]) end
-				end
-			end
-
-			trySetInitialFont()
-		end
 
 		groupbox:AddDivider()
 
@@ -489,6 +449,7 @@ local ThemeManager = {} do
 		self.Library.Options.AccentColor:OnChanged(UpdateTheme)
 		self.Library.Options.OutlineColor:OnChanged(UpdateTheme)
 		self.Library.Options.FontColor:OnChanged(UpdateTheme)
+		if self.Library.Options.Font then self.Library.Options.Font:OnChanged(UpdateTheme) end
 	end
 
 	function ThemeManager:CreateGroupBox(tab)
