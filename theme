@@ -187,9 +187,33 @@ local ThemeManager = {} do
 					self.Library.Options[idx]:SetValue(col)
 				end
 			else
-				self.Library[idx] = Color3.fromHex(col)
-				if self.Library.Options[idx] then
-					self.Library.Options[idx]:SetValueRGB(Color3.fromHex(col))
+				-- Safely parse color values: allow Color3, tables, or hex strings
+				local parsedColor = nil
+				if typeof(col) == "Color3" then
+					parsedColor = col
+				elseif type(col) == "table" then
+					local r = col[1] or col.r
+					local g = col[2] or col.g
+					local b = col[3] or col.b
+					if type(r) == "number" and type(g) == "number" and type(b) == "number" then
+						-- normalize 0-255 -> 0-1
+						if r > 1 or g > 1 or b > 1 then
+							parsedColor = Color3.new(r / 255, g / 255, b / 255)
+						else
+							parsedColor = Color3.new(r, g, b)
+						end
+					end
+				elseif type(col) == "string" then
+					local ok, res = pcall(Color3.fromHex, tostring(col))
+					if ok and typeof(res) == "Color3" then
+						parsedColor = res
+					end
+				end
+				if parsedColor then
+					self.Library[idx] = parsedColor
+					if self.Library.Options[idx] then
+						self.Library.Options[idx]:SetValueRGB(parsedColor)
+					end
 				end
 			end
 		end
@@ -225,7 +249,30 @@ local ThemeManager = {} do
 			elseif field == "TweeningSpeed" or field == "DraggingSpeed" then
 				self.Library[field] = tonumber(val) or self.Library[field]
 			else
-				self.Library[field] = val and (type(val) == "table" and val or Color3.fromHex(val)) or self.Library[field]
+				-- Safely apply color-like fields from options
+				if val then
+					if type(val) == "table" then
+						local r = val[1] or val.r
+						local g = val[2] or val.g
+						local b = val[3] or val.b
+						if type(r) == "number" and type(g) == "number" and type(b) == "number" then
+							if r > 1 or g > 1 or b > 1 then
+								self.Library[field] = Color3.new(r / 255, g / 255, b / 255)
+							else
+								self.Library[field] = Color3.new(r, g, b)
+							end
+						else
+							self.Library[field] = val
+						end
+					elseif typeof(val) == "Color3" then
+						self.Library[field] = val
+					elseif type(val) == "string" then
+						local ok, res = pcall(Color3.fromHex, tostring(val))
+						if ok and typeof(res) == "Color3" then
+							self.Library[field] = res
+						end
+					end
+				end
 			end
 		end
 
