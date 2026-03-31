@@ -362,11 +362,13 @@ local ThemeManager = {} do
 		end
 
 		groupbox:AddLabel('Font'):AddDropdown('Font', { Text = 'Font', Values = fonts, Default = 1 })
-		groupbox:AddLabel('Font size'):AddSlider('TextSize', { Text = 'Font size', Min = 8, Max = 32, Default = self.Library.TextSize or 12, Rounding = 0 })
+		groupbox:AddLabel('Font size')
+		groupbox:AddSlider('TextSize', { Text = 'Font size', Min = 8, Max = 32, Default = self.Library.TextSize or 12, Rounding = 0 })
 
 		groupbox:AddDivider()
 
-		groupbox:AddLabel('Tween speed'):AddSlider('TweeningSpeed', { Text = 'Tween speed', Min = 0.01, Max = 1, Default = self.Library.TweeningSpeed or 0.3, Rounding = 2 })
+		groupbox:AddLabel('Tween speed')
+		groupbox:AddSlider('TweeningSpeed', { Text = 'Tween speed', Min = 0.01, Max = 1, Default = self.Library.TweeningSpeed or 0.3, Rounding = 2 })
 
 		local easingItems = {}
 		local defaultEasingIndex = 1
@@ -378,7 +380,8 @@ local ThemeManager = {} do
 		end
 		groupbox:AddDropdown('EasingStyle', { Text = 'Easing style', Values = easingItems, Default = defaultEasingIndex })
 
-		groupbox:AddLabel('Dragging speed'):AddSlider('DraggingSpeed', { Text = 'Dragging speed', Min = 0.01, Max = 1, Default = self.Library.DraggingSpeed or 0.05, Rounding = 2 })
+		groupbox:AddLabel('Dragging speed')
+		groupbox:AddSlider('DraggingSpeed', { Text = 'Dragging speed', Min = 0.01, Max = 1, Default = self.Library.DraggingSpeed or 0.05, Rounding = 2 })
 		
 		local ThemesArray = {}
 		for Name, Theme in next, self.BuiltInThemes do
