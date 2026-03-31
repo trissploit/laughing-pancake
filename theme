@@ -48,7 +48,7 @@ if typeof(clonefunction) == "function" then
 end
 
 local ThemeManager = {} do
-	local ThemeFields = { "FontColor", "MainColor", "AccentColor", "BackgroundColor", "OutlineColor", "VideoLink", "Font", "TextSize", "TweeningSpeed", "EasingStyle", "DraggingSpeed" }
+	local ThemeFields = { "FontColor", "MainColor", "AccentColor", "BackgroundColor", "OutlineColor", "VideoLink" }
 	ThemeManager.Folder = "LinoriaLibSettings"
 	-- if not isfolder(ThemeManager.Folder) then makefolder(ThemeManager.Folder) end
 
@@ -157,63 +157,17 @@ local ThemeManager = {} do
 		for idx, col in next, customThemeData or scheme do
 			if idx == "VideoLink" then
 				self.Library[idx] = col
+				
 				if self.Library.Options[idx] then
 					self.Library.Options[idx]:SetValue(col)
 				end
+				
 				ApplyBackgroundVideo(col)
-			elseif idx == "Font" then
-				if self.Library.Fonts and self.Library.Fonts[col] then
-					self.Library.Font = self.Library.Fonts[col]
-				end
-				if self.Library.Options[idx] then
-					self.Library.Options[idx]:SetValue(col)
-				end
-			elseif idx == "TextSize" then
-				self.Library.TextSize = tonumber(col) or self.Library.TextSize
-				if self.Library.Options[idx] then
-					self.Library.Options[idx]:SetValue(tonumber(col) or self.Library.Options[idx].Value)
-				end
-				if self.Library.UpdateFonts then self.Library:UpdateFonts() end
-			elseif idx == "TweeningSpeed" or idx == "DraggingSpeed" then
-				self.Library[idx] = tonumber(col) or self.Library[idx]
-				if self.Library.Options[idx] then
-					self.Library.Options[idx]:SetValue(tonumber(col) or self.Library.Options[idx].Value)
-				end
-			elseif idx == "EasingStyle" then
-				if type(col) == "string" and Enum.EasingStyle[col] then
-					self.Library.EasingStyle = Enum.EasingStyle[col]
-				end
-				if self.Library.Options[idx] then
-					self.Library.Options[idx]:SetValue(col)
-				end
 			else
-				-- Safely parse color values: allow Color3, tables, or hex strings
-				local parsedColor = nil
-				if typeof(col) == "Color3" then
-					parsedColor = col
-				elseif type(col) == "table" then
-					local r = col[1] or col.r
-					local g = col[2] or col.g
-					local b = col[3] or col.b
-					if type(r) == "number" and type(g) == "number" and type(b) == "number" then
-						-- normalize 0-255 -> 0-1
-						if r > 1 or g > 1 or b > 1 then
-							parsedColor = Color3.new(r / 255, g / 255, b / 255)
-						else
-							parsedColor = Color3.new(r, g, b)
-						end
-					end
-				elseif type(col) == "string" then
-					local ok, res = pcall(Color3.fromHex, tostring(col))
-					if ok and typeof(res) == "Color3" then
-						parsedColor = res
-					end
-				end
-				if parsedColor then
-					self.Library[idx] = parsedColor
-					if self.Library.Options[idx] then
-						self.Library.Options[idx]:SetValueRGB(parsedColor)
-					end
+				self.Library[idx] = Color3.fromHex(col)
+				
+				if self.Library.Options[idx] then
+					self.Library.Options[idx]:SetValueRGB(Color3.fromHex(col))
 				end
 			end
 		end
@@ -228,56 +182,16 @@ local ThemeManager = {} do
 		end
 
 		for i, field in next, ThemeFields do
-			if not (self.Library.Options and self.Library.Options[field]) then continue end
+			if self.Library.Options and self.Library.Options[field] then
+				self.Library[field] = self.Library.Options[field].Value
 
-			local val = self.Library.Options[field].Value
-
-			if field == "VideoLink" then
-				self.Library.VideoLink = val
-				ApplyBackgroundVideo(val)
-			elseif field == "Font" then
-				if self.Library.Fonts and self.Library.Fonts[val] then
-					self.Library.Font = self.Library.Fonts[val]
-				end
-			elseif field == "TextSize" then
-				self.Library.TextSize = val
-				if self.Library.UpdateFonts then self.Library:UpdateFonts() end
-			elseif field == "EasingStyle" then
-				if type(val) == "string" and Enum.EasingStyle[val] then
-					self.Library.EasingStyle = Enum.EasingStyle[val]
-				end
-			elseif field == "TweeningSpeed" or field == "DraggingSpeed" then
-				self.Library[field] = tonumber(val) or self.Library[field]
-			else
-				-- Safely apply color-like fields from options
-				if val then
-					if type(val) == "table" then
-						local r = val[1] or val.r
-						local g = val[2] or val.g
-						local b = val[3] or val.b
-						if type(r) == "number" and type(g) == "number" and type(b) == "number" then
-							if r > 1 or g > 1 or b > 1 then
-								self.Library[field] = Color3.new(r / 255, g / 255, b / 255)
-							else
-								self.Library[field] = Color3.new(r, g, b)
-							end
-						else
-							self.Library[field] = val
-						end
-					elseif typeof(val) == "Color3" then
-						self.Library[field] = val
-					elseif type(val) == "string" then
-						local ok, res = pcall(Color3.fromHex, tostring(val))
-						if ok and typeof(res) == "Color3" then
-							self.Library[field] = res
-						end
-					end
+				if field == "VideoLink" then
+					ApplyBackgroundVideo(self.Library.Options[field].Value)
 				end
 			end
 		end
 
 		self.Library.AccentColorDark = self.Library:GetDarkerColor(self.Library.AccentColor);
-		if self.Library.UpdateFonts then self.Library:UpdateFonts() end
 		self.Library:UpdateColorsUsingRegistry()
 	end
 
@@ -333,19 +247,10 @@ local ThemeManager = {} do
 
 		local theme = {}
 		for _, field in next, ThemeFields do
-			local opt = self.Library.Options[field]
-			if not opt then
-				-- skip missing option
+			if field == "VideoLink" then
+				theme[field] = self.Library.Options[field].Value
 			else
-				if field == "VideoLink" then
-					theme[field] = opt.Value
-				elseif field == "Font" or field == "EasingStyle" then
-					theme[field] = tostring(opt.Value)
-				elseif field == "TextSize" or field == "TweeningSpeed" or field == "DraggingSpeed" then
-					theme[field] = opt.Value
-				else
-					theme[field] = opt.Value:ToHex()
-				end
+				theme[field] = self.Library.Options[field].Value:ToHex()
 			end
 		end
 
@@ -400,35 +305,37 @@ local ThemeManager = {} do
 		groupbox:AddLabel('Accent color'):AddColorPicker('AccentColor', { Default = self.Library.AccentColor });
 		groupbox:AddLabel('Outline color'):AddColorPicker('OutlineColor', { Default = self.Library.OutlineColor });
 		groupbox:AddLabel('Font color')	:AddColorPicker('FontColor', { Default = self.Library.FontColor });
-		groupbox:AddInput('VideoLink', { Text = '.webm Video Background (Link)', Default = self.Library.VideoLink });
 
-		-- Fonts and misc settings
-		local fonts = {}
-		if self.Library and self.Library.FontIndexes then
-			fonts = self.Library.FontIndexes
+		-- Font selector + UI/tween options (uses neversave font registry when available)
+		local NevFonts = (getgenv and getgenv().NevFonts) or (self.Library and self.Library.Fonts) or nil
+		local FontValues = {}
+		if NevFonts then
+			for fname, _ in next, NevFonts do
+				table.insert(FontValues, fname)
+			end
+			table.sort(FontValues)
+		else
+			FontValues = { 'Code', 'Tahoma', 'Rubik', 'Verdana' }
 		end
 
-		groupbox:AddLabel('Font'):AddDropdown('Font', { Text = 'Font', Values = fonts, Default = 1 })
-		groupbox:AddLabel('Font size')
-		groupbox:AddSlider('TextSize', { Text = 'Font size', Min = 8, Max = 32, Default = self.Library.TextSize or 12, Rounding = 0 })
-
-		groupbox:AddDivider()
-
-		groupbox:AddLabel('Tween speed')
-		groupbox:AddSlider('TweeningSpeed', { Text = 'Tween speed', Min = 0.01, Max = 1, Default = self.Library.TweeningSpeed or 0.3, Rounding = 2 })
-
-		local easingItems = {}
-		local defaultEasingIndex = 1
-		for _, item in next, Enum.EasingStyle:GetEnumItems() do
-			table.insert(easingItems, item.Name)
-			if self.Library.EasingStyle and self.Library.EasingStyle.Name == item.Name then
-				defaultEasingIndex = #easingItems
+		local defaultFontIndex = 1
+		if NevFonts and self.Library.Font then
+			for i, name in ipairs(FontValues) do
+				if NevFonts[name] == self.Library.Font then
+					defaultFontIndex = i
+					break
+				end
 			end
 		end
-		groupbox:AddDropdown('EasingStyle', { Text = 'Easing style', Values = easingItems, Default = defaultEasingIndex })
 
-		groupbox:AddLabel('Dragging speed')
-		groupbox:AddSlider('DraggingSpeed', { Text = 'Dragging speed', Min = 0.01, Max = 1, Default = self.Library.DraggingSpeed or 0.05, Rounding = 2 })
+		groupbox:AddDropdown('ThemeManager_FontList', { Text = 'Font', Values = FontValues, Default = defaultFontIndex })
+		groupbox:AddSlider('ThemeManager_FontSize', { Text = 'Font size', Default = self.Library.TextSize or 12, Min = 8, Max = 28, Rounding = 0, Suffix = 'px' })
+		groupbox:AddToggle('ThemeManager_UseTween', { Text = 'Use tweening', Default = self.Library.Tweening or false })
+		groupbox:AddSlider('ThemeManager_TweenSpeed', { Text = 'Tween speed', Default = self.Library.TweeningSpeed or 0.3, Min = 0.01, Max = 1, Rounding = 2 })
+		groupbox:AddDropdown('ThemeManager_TweenStyle', { Text = 'Tween easing', Values = { 'Linear', 'Sine', 'Back', 'Quad', 'Cubic', 'Quart', 'Quint', 'Bounce', 'Elastic' }, Default = 5 })
+		groupbox:AddSlider('ThemeManager_DraggingSpeed', { Text = 'Dragging speed', Default = self.Library.DraggingSpeed or 0.05, Min = 0.001, Max = 0.5, Rounding = 3 })
+
+		groupbox:AddInput('VideoLink', { Text = '.webm Video Background (Link)', Default = self.Library.VideoLink });
 		
 		local ThemesArray = {}
 		for Name, Theme in next, self.BuiltInThemes do
@@ -525,42 +432,61 @@ local ThemeManager = {} do
 		self.Library.Options.OutlineColor:OnChanged(UpdateTheme)
 		self.Library.Options.FontColor:OnChanged(UpdateTheme)
 
-		-- additional option handlers
-		if self.Library.Options.Font then
-			self.Library.Options.Font:OnChanged(function()
-				local name = self.Library.Options.Font.Value
-				if self.Library.Fonts and self.Library.Fonts[name] then
-					self.Library.Font = self.Library.Fonts[name]
-				end
-				if self.Library.UpdateFonts then self.Library:UpdateFonts() end
-			end)
-		end
-
-		if self.Library.Options.TextSize then
-			self.Library.Options.TextSize:OnChanged(function()
-				self.Library.TextSize = self.Library.Options.TextSize.Value
-				if self.Library.UpdateFonts then self.Library:UpdateFonts() end
-			end)
-		end
-
-		if self.Library.Options.TweeningSpeed then
-			self.Library.Options.TweeningSpeed:OnChanged(function()
-				self.Library.TweeningSpeed = self.Library.Options.TweeningSpeed.Value
-			end)
-		end
-
-		if self.Library.Options.EasingStyle then
-			self.Library.Options.EasingStyle:OnChanged(function()
-				local val = self.Library.Options.EasingStyle.Value
-				if type(val) == "string" and Enum.EasingStyle[val] then
-					self.Library.EasingStyle = Enum.EasingStyle[val]
+		-- Font/tween option handlers
+		if self.Library.Options.ThemeManager_FontList then
+			self.Library.Options.ThemeManager_FontList:OnChanged(function()
+				local val = self.Library.Options.ThemeManager_FontList.Value
+				if NevFonts and NevFonts[val] then
+					self.Library.Font = NevFonts[val]
+					self.Library.FontName = val
+					-- apply FontFace to existing UI elements where possible
+					pcall(function()
+						local guis = { self.Library.Items, self.Library.Other, self.Library.Elements, self.Library.ScreenGui }
+						for _, gui in ipairs(guis) do
+							if gui and gui.GetDescendants then
+								for _, inst in ipairs(gui:GetDescendants()) do
+									if inst:IsA('TextLabel') or inst:IsA('TextButton') or inst:IsA('TextBox') then
+										pcall(function() inst.FontFace = NevFonts[val] end)
+									end
+								end
+							end
+						end
+					end)
 				end
 			end)
 		end
 
-		if self.Library.Options.DraggingSpeed then
-			self.Library.Options.DraggingSpeed:OnChanged(function()
-				self.Library.DraggingSpeed = self.Library.Options.DraggingSpeed.Value
+		if self.Library.Options.ThemeManager_FontSize then
+			self.Library.Options.ThemeManager_FontSize:OnChanged(function()
+				self.Library.TextSize = self.Library.Options.ThemeManager_FontSize.Value
+			end)
+		end
+
+		if self.Library.Options.ThemeManager_UseTween then
+			self.Library.Options.ThemeManager_UseTween:OnChanged(function()
+				self.Library.Tweening = self.Library.Options.ThemeManager_UseTween.Value
+			end)
+		end
+
+		if self.Library.Options.ThemeManager_TweenSpeed then
+			self.Library.Options.ThemeManager_TweenSpeed:OnChanged(function()
+				self.Library.TweeningSpeed = self.Library.Options.ThemeManager_TweenSpeed.Value
+			end)
+		end
+
+		if self.Library.Options.ThemeManager_TweenStyle then
+			self.Library.Options.ThemeManager_TweenStyle:OnChanged(function()
+				local val = self.Library.Options.ThemeManager_TweenStyle.Value
+				local ok, enumVal = pcall(function() return Enum.EasingStyle[val] end)
+				if ok and enumVal then
+					self.Library.EasingStyle = enumVal
+				end
+			end)
+		end
+
+		if self.Library.Options.ThemeManager_DraggingSpeed then
+			self.Library.Options.ThemeManager_DraggingSpeed:OnChanged(function()
+				self.Library.DraggingSpeed = self.Library.Options.ThemeManager_DraggingSpeed.Value
 			end)
 		end
 	end
