@@ -48,7 +48,7 @@ if typeof(clonefunction) == "function" then
 end
 
 local ThemeManager = {} do
-	local ThemeFields = { "FontColor", "MainColor", "AccentColor", "BackgroundColor", "OutlineColor", "VideoLink", "FontName" }
+	local ThemeFields = { "FontColor", "MainColor", "AccentColor", "BackgroundColor", "OutlineColor", "InlineColor", "Font", "SliderTweenSpeed", "SliderEasingStyle", "DraggingSpeed", "HighlightTweenSpeed", "HighlightEasingStyle", "VideoLink" }
 	ThemeManager.Folder = "LinoriaLibSettings"
 	-- if not isfolder(ThemeManager.Folder) then makefolder(ThemeManager.Folder) end
 
@@ -157,28 +157,47 @@ local ThemeManager = {} do
 		for idx, col in next, customThemeData or scheme do
 			if idx == "VideoLink" then
 				self.Library[idx] = col
-				
 				if self.Library.Options[idx] then
 					self.Library.Options[idx]:SetValue(col)
 				end
-				
 				ApplyBackgroundVideo(col)
-			elseif idx == "FontName" then
-				-- font name is stored as a plain string
-				local fontObj = (self.Library.GetFontFromName and self.Library:GetFontFromName(col)) or nil
-				if self.Library.SetFontFace then
-					self.Library:SetFontFace(fontObj)
-				else
-					self.Library.FontFace = fontObj
-				end
-				if self.Library.Options[idx] then
-					self.Library.Options[idx]:SetValue(col)
-				end
 			else
-				self.Library[idx] = Color3.fromHex(col)
-				
-				if self.Library.Options[idx] then
-					self.Library.Options[idx]:SetValueRGB(Color3.fromHex(col))
+				-- Colors (hex strings) -> Color3
+				if type(col) == "string" and #col > 0 and col:match("^#?%x%x%x%x%x%x$") then
+					local hex = col:gsub("#", "")
+					local c = Color3.fromHex(hex)
+					self.Library[idx] = c
+					if self.Library.Options[idx] then
+						self.Library.Options[idx]:SetValueRGB(c)
+					end
+				else
+					-- Non-color fields
+					if idx == "Font" then
+						if type(col) == "string" then
+							if Enum.Font[col] then
+								self.Library.Font = Enum.Font[col]
+							elseif getgenv and getgenv().Fonts and getgenv().Fonts[col] then
+								self.Library.Font = getgenv().Fonts[col]
+							end
+						else
+							self.Library.Font = col
+						end
+						if self.Library.Options.Font then self.Library.Options.Font:SetValue(col) end
+					elseif idx:find("EasingStyle") then
+						if type(col) == "string" and Enum.EasingStyle[col] then
+							self.Library[idx] = Enum.EasingStyle[col]
+							if self.Library.Options[idx] then self.Library.Options[idx]:SetValue(col) end
+						end
+					elseif idx:find("Speed") then
+						local n = tonumber(col)
+						if n then
+							self.Library[idx] = n
+							if self.Library.Options[idx] then self.Library.Options[idx]:SetValue(n) end
+						end
+					else
+						self.Library[idx] = col
+						if self.Library.Options[idx] then self.Library.Options[idx]:SetValue(col) end
+					end
 				end
 			end
 		end
@@ -194,19 +213,32 @@ local ThemeManager = {} do
 
 		for i, field in next, ThemeFields do
 			if self.Library.Options and self.Library.Options[field] then
-				if field == "FontName" then
-					local val = self.Library.Options[field].Value
-					local fontObj = (self.Library.GetFontFromName and self.Library:GetFontFromName(val)) or nil
-					if self.Library.SetFontFace then
-						self.Library:SetFontFace(fontObj)
+				local val = self.Library.Options[field].Value
+				-- handle special conversions
+				if field == "VideoLink" then
+					self.Library[field] = val
+					ApplyBackgroundVideo(val)
+				elseif field == "Font" then
+					if type(val) == "string" then
+						if Enum.Font[val] then
+							self.Library.Font = Enum.Font[val]
+						elseif getgenv and getgenv().Fonts and getgenv().Fonts[val] then
+							self.Library.Font = getgenv().Fonts[val]
+						end
 					else
-						self.Library.FontFace = fontObj
+						self.Library.Font = val
 					end
+					self.Library[field] = self.Library.Font
+				elseif tostring(field):find("EasingStyle") then
+					if type(val) == "string" and Enum.EasingStyle[val] then
+						self.Library[field] = Enum.EasingStyle[val]
+					else
+						self.Library[field] = val
+					end
+				elseif tostring(field):find("Speed") then
+					self.Library[field] = tonumber(val) or val
 				else
-					self.Library[field] = self.Library.Options[field].Value
-					if field == "VideoLink" then
-						ApplyBackgroundVideo(self.Library.Options[field].Value)
-					end
+					self.Library[field] = val
 				end
 			end
 		end
@@ -267,12 +299,21 @@ local ThemeManager = {} do
 
 		local theme = {}
 		for _, field in next, ThemeFields do
-			if field == "VideoLink" then
-				theme[field] = self.Library.Options[field].Value
-			elseif field == "FontName" then
-				theme[field] = self.Library.Options[field].Value
+			local opt = self.Library.Options[field]
+			if not opt then
+				theme[field] = nil
 			else
-				theme[field] = self.Library.Options[field].Value:ToHex()
+				local val = opt.Value
+				local t = typeof(val)
+				if t == "Color3" then
+					theme[field] = val:ToHex()
+				elseif t == "EnumItem" then
+					theme[field] = val.Name
+				elseif t == "number" or t == "string" or t == "boolean" then
+					theme[field] = val
+				else
+					theme[field] = tostring(val)
+				end
 			end
 		end
 
@@ -326,41 +367,22 @@ local ThemeManager = {} do
 		groupbox:AddLabel('Main color')	:AddColorPicker('MainColor', { Default = self.Library.MainColor });
 		groupbox:AddLabel('Accent color'):AddColorPicker('AccentColor', { Default = self.Library.AccentColor });
 		groupbox:AddLabel('Outline color'):AddColorPicker('OutlineColor', { Default = self.Library.OutlineColor });
+		groupbox:AddLabel('Inline color'):AddColorPicker('InlineColor', { Default = self.Library.InlineColor or self.Library.MainColor });
 		groupbox:AddLabel('Font color')	:AddColorPicker('FontColor', { Default = self.Library.FontColor });
-		-- Font selection (best-effort; requires Library to expose AvailableFonts and GetFontFromName)
-		local FontNames = {}
-		if self.Library and self.Library.AvailableFonts and #self.Library.AvailableFonts > 0 then
-			FontNames = self.Library.AvailableFonts
-		else
-			FontNames = { 'Default' }
-		end
 
-		local defaultFontName = nil
-		if table.find(FontNames, 'proggy-tiny') then
-			defaultFontName = 'proggy-tiny'
-		else
-			defaultFontName = (FontNames[1] or 1)
-		end
+		-- Font selector (uses Enum.Font names or custom fonts available via getgenv().Fonts)
+		local FontList = { 'Code', 'SourceSans', 'SourceSansBold', 'Gotham', 'Tahoma', 'Arcade', 'Roboto', 'Rubik', 'ProggyClean', 'SmallestPixel', 'Minecraftia' }
+		local CurrentFontName = (self.Library.Font and (self.Library.Font.Name or tostring(self.Library.Font))) or 'Code'
+		if not table.find(FontList, CurrentFontName) then table.insert(FontList, 1, CurrentFontName) end
+		groupbox:AddDropdown('Font', { Text = 'Font', Values = FontList, Default = CurrentFontName })
 
-		groupbox:AddLabel('Font')	:AddDropdown('FontName', { Text = 'Font', Values = FontNames, Default = defaultFontName, AllowNull = true })
-
-		self.Library.Options.FontName:OnChanged(function()
-			local name = self.Library.Options.FontName.Value
-			local fontObj = nil
-			if not name or name == '' then
-				fontObj = nil
-			else
-				local ok, f = pcall(function() return self.Library:GetFontFromName(name) end)
-				fontObj = (ok and f) and f or nil
-			end
-			if self.Library.SetFontFace then
-				self.Library:SetFontFace(fontObj)
-			else
-				self.Library.FontFace = fontObj
-			end
-			self:ThemeUpdate()
-		end)
-
+		-- Tween / dragging options
+		local EasingOptions = { 'Linear', 'Sine', 'Back', 'Bounce', 'Quint', 'Quad', 'Quart', 'Elastic', 'Cubic', 'Circular' }
+		groupbox:AddSlider('SliderTweenSpeed', { Text = 'Slider tween speed', Min = 0.01, Max = 0.5, Default = self.Library.SliderTweenSpeed or 0.09, Rounding = 2 })
+		groupbox:AddDropdown('SliderEasingStyle', { Text = 'Slider easing style', Values = EasingOptions, Default = (self.Library.SliderEasingStyle and self.Library.SliderEasingStyle.Name) or 'Quad' })
+		groupbox:AddSlider('DraggingSpeed', { Text = 'UI dragging speed', Min = 0.001, Max = 0.2, Default = self.Library.DraggingSpeed or 0.05, Rounding = 3 })
+		groupbox:AddSlider('HighlightTweenSpeed', { Text = 'Hover tween speed', Min = 0.01, Max = 0.5, Default = self.Library.HighlightTweenSpeed or 0.14, Rounding = 2 })
+		groupbox:AddDropdown('HighlightEasingStyle', { Text = 'Hover easing style', Values = EasingOptions, Default = (self.Library.HighlightEasingStyle and self.Library.HighlightEasingStyle.Name) or 'Quad' })
 		groupbox:AddInput('VideoLink', { Text = '.webm Video Background (Link)', Default = self.Library.VideoLink });
 		
 		local ThemesArray = {}
@@ -457,6 +479,13 @@ local ThemeManager = {} do
 		self.Library.Options.AccentColor:OnChanged(UpdateTheme)
 		self.Library.Options.OutlineColor:OnChanged(UpdateTheme)
 		self.Library.Options.FontColor:OnChanged(UpdateTheme)
+		if self.Library.Options.InlineColor then self.Library.Options.InlineColor:OnChanged(UpdateTheme) end
+		if self.Library.Options.Font then self.Library.Options.Font:OnChanged(UpdateTheme) end
+		if self.Library.Options.SliderTweenSpeed then self.Library.Options.SliderTweenSpeed:OnChanged(UpdateTheme) end
+		if self.Library.Options.SliderEasingStyle then self.Library.Options.SliderEasingStyle:OnChanged(UpdateTheme) end
+		if self.Library.Options.DraggingSpeed then self.Library.Options.DraggingSpeed:OnChanged(UpdateTheme) end
+		if self.Library.Options.HighlightTweenSpeed then self.Library.Options.HighlightTweenSpeed:OnChanged(UpdateTheme) end
+		if self.Library.Options.HighlightEasingStyle then self.Library.Options.HighlightEasingStyle:OnChanged(UpdateTheme) end
 	end
 
 	function ThemeManager:CreateGroupBox(tab)
