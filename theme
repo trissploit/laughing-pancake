@@ -48,7 +48,7 @@ if typeof(clonefunction) == "function" then
 end
 
 local ThemeManager = {} do
-	local ThemeFields = { "FontColor", "Font", "MainColor", "AccentColor", "BackgroundColor", "OutlineColor", "VideoLink" }
+	local ThemeFields = { "FontColor", "MainColor", "AccentColor", "BackgroundColor", "OutlineColor", "VideoLink", "Font", "SliderTweenSpeed", "SliderTweenStyle", "HoverTweenSpeed", "HoverTweenStyle" }
 	ThemeManager.Folder = "LinoriaLibSettings"
 	-- if not isfolder(ThemeManager.Folder) then makefolder(ThemeManager.Folder) end
 
@@ -63,6 +63,34 @@ local ThemeManager = {} do
 		['Ubuntu']        = { 7, { FontColor = "ffffff", MainColor = "3e3e3e", AccentColor = "e2581e", BackgroundColor = "323232", OutlineColor = "191919" } },
 		['Quartz']        = { 8, { FontColor = "ffffff", MainColor = "232330", AccentColor = "426e87", BackgroundColor = "1d1b26", OutlineColor = "27232f" } },
 	}
+
+	local ColorThemeFields = {
+		FontColor = true;
+		MainColor = true;
+		AccentColor = true;
+		BackgroundColor = true;
+		OutlineColor = true;
+	}
+
+	local NumberThemeFields = {
+		SliderTweenSpeed = true;
+		HoverTweenSpeed = true;
+	}
+
+	local function ParseThemeColor(value)
+		if typeof(value) == "Color3" then
+			return value
+		end
+
+		if typeof(value) == "string" and value ~= "" then
+			local success, color = pcall(Color3.fromHex, value)
+			if success then
+				return color
+			end
+		end
+
+		return nil
+	end
 
 	function ApplyBackgroundVideo(videoLink)
 		if
@@ -153,32 +181,56 @@ local ThemeManager = {} do
 			self.Library.InnerVideoBackground.Visible = false
 		end
 		
-		local scheme = data[2]
-		for idx, col in next, customThemeData or scheme do
+		local scheme = customThemeData or data[2]
+		for idx, col in next, scheme do
 			if idx == "VideoLink" then
-				self.Library[idx] = col
-				
+				local videoLink = if typeof(col) == "string" then col else ""
+				self.Library[idx] = videoLink
+
 				if self.Library.Options[idx] then
-					self.Library.Options[idx]:SetValue(col)
+					self.Library.Options[idx]:SetValue(videoLink)
 				end
-				
-				ApplyBackgroundVideo(col)
+
+				ApplyBackgroundVideo(videoLink)
 			elseif idx == "Font" then
-				-- Font stored as a string name in themes
-				self.Library.FontName = col
-				if self.Library.Fonts and self.Library.Fonts[col] then
-					self.Library.Font = self.Library.Fonts[col]
-				else
-					-- fallback: do nothing
+				local fontName = tostring(col or "")
+				if fontName ~= "" then
+					if self.Library.SetFont then
+						self.Library:SetFont(fontName, true)
+					else
+						self.Library.FontName = fontName
+					end
+
+					if self.Library.Options[idx] then
+						self.Library.Options[idx]:SetValue(fontName)
+					end
 				end
-				if self.Library.Options[idx] then
-					self.Library.Options[idx]:SetValue(col)
+			elseif idx == "SliderTweenStyle" or idx == "HoverTweenStyle" then
+				local styleName = tostring(col or "")
+				if styleName ~= "" then
+					self.Library[idx] = styleName
+
+					if self.Library.Options[idx] then
+						self.Library.Options[idx]:SetValue(styleName)
+					end
 				end
-			else
-				self.Library[idx] = Color3.fromHex(col)
-				
-				if self.Library.Options[idx] then
-					self.Library.Options[idx]:SetValueRGB(Color3.fromHex(col))
+			elseif NumberThemeFields[idx] then
+				local numericValue = tonumber(col)
+				if numericValue then
+					self.Library[idx] = numericValue
+
+					if self.Library.Options[idx] then
+						self.Library.Options[idx]:SetValue(tostring(numericValue))
+					end
+				end
+			elseif ColorThemeFields[idx] then
+				local parsedColor = ParseThemeColor(col)
+				if parsedColor then
+					self.Library[idx] = parsedColor
+
+					if self.Library.Options[idx] then
+						self.Library.Options[idx]:SetValueRGB(parsedColor)
+					end
 				end
 			end
 		end
@@ -194,26 +246,35 @@ local ThemeManager = {} do
 
 		for i, field in next, ThemeFields do
 			if self.Library.Options and self.Library.Options[field] then
-				local val = self.Library.Options[field].Value
-				if field == "Font" then
-					self.Library.FontName = val
-					if self.Library.Fonts and self.Library.Fonts[val] then
-						self.Library.Font = self.Library.Fonts[val]
+				local optionValue = self.Library.Options[field].Value
+
+				if field == "VideoLink" then
+					self.Library[field] = if typeof(optionValue) == "string" then optionValue else ""
+					ApplyBackgroundVideo(self.Library[field])
+				elseif field == "Font" then
+					local fontName = tostring(optionValue or "")
+					if fontName ~= "" then
+						if self.Library.SetFont then
+							self.Library:SetFont(fontName, true)
+						else
+							self.Library.FontName = fontName
+						end
+					end
+				elseif field == "SliderTweenStyle" or field == "HoverTweenStyle" then
+					self.Library[field] = tostring(optionValue or self.Library[field])
+				elseif NumberThemeFields[field] then
+					local numericValue = tonumber(optionValue)
+					if numericValue then
+						self.Library[field] = numericValue
 					end
 				else
-					self.Library[field] = val
-					if field == "VideoLink" then
-						ApplyBackgroundVideo(val)
-					end
+					self.Library[field] = optionValue
 				end
 			end
 		end
 
 		self.Library.AccentColorDark = self.Library:GetDarkerColor(self.Library.AccentColor);
 		self.Library:UpdateColorsUsingRegistry()
-		if self.Library.UpdateFonts then
-			self.Library:UpdateFonts()
-		end
 	end
 
 	--// Get, Load, Save, Delete, Refresh \\--
@@ -268,12 +329,15 @@ local ThemeManager = {} do
 
 		local theme = {}
 		for _, field in next, ThemeFields do
-			if field == "VideoLink" then
-				theme[field] = self.Library.Options[field].Value
-			elseif field == "Font" then
-				theme[field] = tostring(self.Library.Options[field].Value)
-			else
-				theme[field] = self.Library.Options[field].Value:ToHex()
+			local option = self.Library.Options[field]
+			if option then
+				if ColorThemeFields[field] then
+					theme[field] = option.Value:ToHex()
+				elseif NumberThemeFields[field] then
+					theme[field] = tonumber(option.Value) or tonumber(self.Library[field]) or 0
+				else
+					theme[field] = option.Value
+				end
 			end
 		end
 
@@ -328,32 +392,20 @@ local ThemeManager = {} do
 		groupbox:AddLabel('Accent color'):AddColorPicker('AccentColor', { Default = self.Library.AccentColor });
 		groupbox:AddLabel('Outline color'):AddColorPicker('OutlineColor', { Default = self.Library.OutlineColor });
 		groupbox:AddLabel('Font color')	:AddColorPicker('FontColor', { Default = self.Library.FontColor });
+		groupbox:AddInput('VideoLink', { Text = '.webm Video Background (Link)', Default = self.Library.VideoLink, Finished = true });
 
-		-- Font selector (populated from Library.FontList)
-		local FontValues = {}
-		if self.Library and self.Library.FontList and #self.Library.FontList > 0 then
-			for _, v in ipairs(self.Library.FontList) do
-				table.insert(FontValues, v)
-			end
-		else
-			FontValues = { 'Code' }
+		local FontValues = if self.Library.GetAvailableFontNames then self.Library:GetAvailableFontNames() else { "Code" }
+		if #FontValues == 0 then
+			FontValues = { "Code" }
 		end
 
-		local defaultFont = self.Library.FontName or (FontValues[1] or 'Code')
-		local defaultIdx = 1
-		for i, v in ipairs(FontValues) do
-			if v == defaultFont then
-				defaultIdx = i
-				break
-			end
-		end
+		local TweenStyles = self.Library.TweenStyles or { "Quad" }
 
-		groupbox:AddLabel('Font')	:AddDropdown('Font', { Text = 'Font', Values = FontValues, Default = defaultIdx })
-		if self.Library.Options.Font then
-			self.Library.Options.Font:SetValue(defaultFont)
-		end
-
-		groupbox:AddInput('VideoLink', { Text = '.webm Video Background (Link)', Default = self.Library.VideoLink });
+		groupbox:AddDropdown('Font', { Text = 'Font', Values = FontValues, Default = self.Library.FontName or "Code" })
+		groupbox:AddSlider('SliderTweenSpeed', { Text = 'Slider tween speed', Default = tonumber(self.Library.SliderTweenSpeed) or 0.09, Min = 0, Max = 0.5, Rounding = 3 })
+		groupbox:AddDropdown('SliderTweenStyle', { Text = 'Slider tween style', Values = TweenStyles, Default = self.Library.SliderTweenStyle or "Quad" })
+		groupbox:AddSlider('HoverTweenSpeed', { Text = 'Hover tween speed', Default = tonumber(self.Library.HoverTweenSpeed) or 0.14, Min = 0, Max = 0.5, Rounding = 3 })
+		groupbox:AddDropdown('HoverTweenStyle', { Text = 'Hover tween style', Values = TweenStyles, Default = self.Library.HoverTweenStyle or "Quad" })
 		
 		local ThemesArray = {}
 		for Name, Theme in next, self.BuiltInThemes do
@@ -449,7 +501,12 @@ local ThemeManager = {} do
 		self.Library.Options.AccentColor:OnChanged(UpdateTheme)
 		self.Library.Options.OutlineColor:OnChanged(UpdateTheme)
 		self.Library.Options.FontColor:OnChanged(UpdateTheme)
-		if self.Library.Options.Font then self.Library.Options.Font:OnChanged(UpdateTheme) end
+		self.Library.Options.VideoLink:OnChanged(UpdateTheme)
+		self.Library.Options.Font:OnChanged(UpdateTheme)
+		self.Library.Options.SliderTweenSpeed:OnChanged(UpdateTheme)
+		self.Library.Options.SliderTweenStyle:OnChanged(UpdateTheme)
+		self.Library.Options.HoverTweenSpeed:OnChanged(UpdateTheme)
+		self.Library.Options.HoverTweenStyle:OnChanged(UpdateTheme)
 	end
 
 	function ThemeManager:CreateGroupBox(tab)
