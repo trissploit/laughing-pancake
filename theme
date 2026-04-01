@@ -48,7 +48,7 @@ if typeof(clonefunction) == "function" then
 end
 
 local ThemeManager = {} do
-	local ThemeFields = { "FontColor", "MainColor", "AccentColor", "BackgroundColor", "OutlineColor", "VideoLink", "Font", "SliderTweenSpeed", "SliderTweenStyle", "HoverTweenSpeed", "HoverTweenStyle" }
+	local ThemeFields = { "FontColor", "MainColor", "AccentColor", "BackgroundColor", "OutlineColor", "VideoLink", "Font", "FontSizeScale", "SliderTweenSpeed", "SliderTweenStyle", "HoverTweenSpeed", "HoverTweenStyle" }
 	ThemeManager.Folder = "LinoriaLibSettings"
 	-- if not isfolder(ThemeManager.Folder) then makefolder(ThemeManager.Folder) end
 
@@ -73,6 +73,7 @@ local ThemeManager = {} do
 	}
 
 	local NumberThemeFields = {
+		FontSizeScale = true;
 		SliderTweenSpeed = true;
 		HoverTweenSpeed = true;
 	}
@@ -217,7 +218,11 @@ local ThemeManager = {} do
 			elseif NumberThemeFields[idx] then
 				local numericValue = tonumber(col)
 				if numericValue then
-					self.Library[idx] = numericValue
+					if idx == "FontSizeScale" and self.Library.SetFontSizeScale then
+						self.Library:SetFontSizeScale(numericValue, true)
+					else
+						self.Library[idx] = numericValue
+					end
 
 					if self.Library.Options[idx] then
 						self.Library.Options[idx]:SetValue(tostring(numericValue))
@@ -265,7 +270,11 @@ local ThemeManager = {} do
 				elseif NumberThemeFields[field] then
 					local numericValue = tonumber(optionValue)
 					if numericValue then
-						self.Library[field] = numericValue
+						if field == "FontSizeScale" and self.Library.SetFontSizeScale then
+							self.Library:SetFontSizeScale(numericValue, true)
+						else
+							self.Library[field] = numericValue
+						end
 					end
 				else
 					self.Library[field] = optionValue
@@ -394,14 +403,20 @@ local ThemeManager = {} do
 		groupbox:AddLabel('Font color')	:AddColorPicker('FontColor', { Default = self.Library.FontColor });
 		groupbox:AddInput('VideoLink', { Text = '.webm Video Background (Link)', Default = self.Library.VideoLink, Finished = true });
 
-		local FontValues = if self.Library.GetAvailableFontNames then self.Library:GetAvailableFontNames() else { "Code" }
+		local FontValues = if self.Library.GetAvailableFontNames then self.Library:GetAvailableFontNames() else { "ProggyClean" }
 		if #FontValues == 0 then
-			FontValues = { "Code" }
+			FontValues = { "ProggyClean", "Tahoma", "Verdana", "SmallestPixel", "ProggyTiny", "Minecraftia", "Tahoma Bold", "Rubik" }
+		end
+
+		local DefaultFont = self.Library.FontName
+		if not table.find(FontValues, DefaultFont) then
+			DefaultFont = FontValues[1]
 		end
 
 		local TweenStyles = self.Library.TweenStyles or { "Quad" }
 
-		groupbox:AddDropdown('Font', { Text = 'Font', Values = FontValues, Default = self.Library.FontName or "Code" })
+		groupbox:AddDropdown('Font', { Text = 'Font', Values = FontValues, Default = DefaultFont })
+		groupbox:AddSlider('FontSizeScale', { Text = 'Font size scale', Default = tonumber(self.Library.FontSizeScale) or 1, Min = 0.6, Max = 2, Rounding = 2 })
 		groupbox:AddSlider('SliderTweenSpeed', { Text = 'Slider tween speed', Default = tonumber(self.Library.SliderTweenSpeed) or 0.09, Min = 0, Max = 0.5, Rounding = 3 })
 		groupbox:AddDropdown('SliderTweenStyle', { Text = 'Slider tween style', Values = TweenStyles, Default = self.Library.SliderTweenStyle or "Quad" })
 		groupbox:AddSlider('HoverTweenSpeed', { Text = 'Hover tween speed', Default = tonumber(self.Library.HoverTweenSpeed) or 0.14, Min = 0, Max = 0.5, Rounding = 3 })
@@ -503,6 +518,7 @@ local ThemeManager = {} do
 		self.Library.Options.FontColor:OnChanged(UpdateTheme)
 		self.Library.Options.VideoLink:OnChanged(UpdateTheme)
 		self.Library.Options.Font:OnChanged(UpdateTheme)
+		self.Library.Options.FontSizeScale:OnChanged(UpdateTheme)
 		self.Library.Options.SliderTweenSpeed:OnChanged(UpdateTheme)
 		self.Library.Options.SliderTweenStyle:OnChanged(UpdateTheme)
 		self.Library.Options.HoverTweenSpeed:OnChanged(UpdateTheme)
