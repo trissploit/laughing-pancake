@@ -2418,8 +2418,15 @@ do
             PreviousValues.Value = ColorPicker.Value
             PreviousValues.Transparency = ColorPicker.Transparency
 
-            Library:SafeCallback(ColorPicker.Callback, ColorPicker.Value, ColorPicker.Transparency)
-            Library:SafeCallback(ColorPicker.Changed, ColorPicker.Value, ColorPicker.Transparency)
+            local callbackValue = Info.Gradient and GradientStops or ColorPicker.Value
+            if Info.Gradient and callbackValue then
+                table.sort(callbackValue, function(a, b)
+                    return (tonumber(a and a.pos) or 0) < (tonumber(b and b.pos) or 0)
+                end)
+            end
+
+            Library:SafeCallback(ColorPicker.Callback, callbackValue, ColorPicker.Transparency)
+            Library:SafeCallback(ColorPicker.Changed, callbackValue, ColorPicker.Transparency)
         end
 
         function ColorPicker:SetHSVFromRGB(Color)
