@@ -250,11 +250,11 @@ local Library = {
 
     Black = Color3.new(0, 0, 0);
     Font = Enum.Font.Code,
-    FontName = "ProggyClean";
+    FontName = "Tahoma";
     FontFace = nil;
     FontMap = {};
     FontOptions = {};
-    FontSize = 14;
+    FontSize = 12;
 
     SliderTweenSpeed = 0.09;
     SliderTweenStyle = "Quad";
@@ -270,6 +270,7 @@ local Library = {
     -- signals --
     UnloadSignals = {};
     Signals = {};
+    LayoutRefreshCallbacks = {};
 
     -- gui --
     ActiveTab = nil;
@@ -395,6 +396,46 @@ function Library:GetAvailableFontNames()
     return table.clone(Library.FontOptions)
 end
 
+function Library:RegisterLayoutRefreshCallback(Callback)
+    if typeof(Callback) ~= "function" then
+        return nil
+    end
+
+    table.insert(Library.LayoutRefreshCallbacks, Callback)
+    return Callback
+end
+
+function Library:RefreshLayoutRefreshCallbacks()
+    for _, Callback in ipairs(Library.LayoutRefreshCallbacks) do
+        pcall(Callback)
+    end
+end
+
+function Library:BindTextBoundsToRefresh(TextObject: Instance, RefreshCallback)
+    if not TextObject or not IsTextObject(TextObject) then
+        return nil
+    end
+
+    if typeof(RefreshCallback) ~= "function" then
+        return nil
+    end
+
+    local function Refresh()
+        if Library.Unloaded then
+            return
+        end
+
+        pcall(RefreshCallback)
+    end
+
+    Library:RegisterLayoutRefreshCallback(Refresh)
+    Library:GiveSignal(TextObject:GetPropertyChangedSignal("TextBounds"):Connect(Refresh))
+    Library:GiveSignal(TextObject:GetPropertyChangedSignal("Text"):Connect(Refresh))
+    Refresh()
+
+    return Refresh
+end
+
 function Library:ApplyFontToTextObject(Inst: Instance)
     if not IsTextObject(Inst) then
         return
@@ -432,6 +473,8 @@ function Library:UpdateFontsUsingRegistry()
     for _, Inst in next, Library.ScreenGui:GetDescendants() do
         Library:ApplyFontToTextObject(Inst)
     end
+
+    Library:RefreshLayoutRefreshCallbacks()
 end
 
 function Library:ApplyFontSizeToTextObject(Inst: Instance)
@@ -455,6 +498,8 @@ function Library:UpdateTextSizesUsingRegistry()
     for _, Inst in next, Library.ScreenGui:GetDescendants() do
         Library:ApplyFontSizeToTextObject(Inst)
     end
+
+    Library:RefreshLayoutRefreshCallbacks()
 end
 
 function Library:SetFontSize(Size: number, SkipSave: boolean?)
@@ -465,6 +510,16 @@ function Library:SetFontSize(Size: number, SkipSave: boolean?)
 
     Library.FontSize = math.clamp(Numeric, 8, 48)
     Library:UpdateTextSizesUsingRegistry()
+
+    if Library.WatermarkText then
+        if Library.FontFace then
+            Library.WatermarkText.FontFace = Library.FontFace
+        else
+            Library.WatermarkText.Font = Library.Font
+        end
+
+        Library.WatermarkText.TextSize = ApplyTextSize(Library.FontSize)
+    end
 
     if not SkipSave then
         Library:AttemptSave()
@@ -495,6 +550,16 @@ function Library:SetFont(FontName: string, SkipSave: boolean?)
     end
 
     Library:UpdateFontsUsingRegistry()
+
+    if Library.WatermarkText then
+        if Library.FontFace then
+            Library.WatermarkText.FontFace = Library.FontFace
+        else
+            Library.WatermarkText.Font = Library.Font
+        end
+
+        Library.WatermarkText.TextSize = ApplyTextSize(Library.FontSize)
+    end
 
     if not SkipSave then
         Library:AttemptSave()
@@ -581,6 +646,17 @@ local NeverSaveFontFiles = {
     ["Rubik"] = "Rubik-Regular.ttf",
 }
 
+local NeverSaveEnumFallbacks = {
+    ["ProggyClean"] = Enum.Font.Code,
+    ["Tahoma"] = Enum.Font.SourceSans,
+    ["Verdana"] = Enum.Font.SourceSans,
+    ["SmallestPixel"] = Enum.Font.Code,
+    ["ProggyTiny"] = Enum.Font.Code,
+    ["Minecraftia"] = Enum.Font.Code,
+    ["Tahoma Bold"] = Enum.Font.SourceSansBold,
+    ["Rubik"] = Enum.Font.GothamBold,
+}
+
 local NeverSaveFontOrder = {
     "ProggyClean", "Tahoma", "Verdana", "SmallestPixel", "ProggyTiny", "Minecraftia", "Tahoma Bold", "Rubik"
 }
@@ -633,29 +709,6 @@ local NeverSaveFonts = {} do
             return Font.new(DescriptorAsset, Enum.FontWeight.Regular, Enum.FontStyle.Normal)
         end)
 
-
-    local function RegisterNeverSaveFontsOnly()
-        table.clear(Library.FontMap)
-        table.clear(Library.FontOptions)
-
-        for _, Name in ipairs(NeverSaveFontOrder) do
-            local FontFace = NeverSaveFonts[Name]
-            if FontFace then
-                Library:RegisterFont(Name, FontFace)
-            end
-        end
-
-        local PreferredFont = Library.FontName
-        if not Library.FontMap[PreferredFont] then
-            PreferredFont = Library.FontOptions[1]
-        end
-
-        if PreferredFont then
-            Library:SetFont(PreferredFont, true)
-        end
-    end
-
-    RegisterNeverSaveFontsOnly()
         if FontSuccess then
             return FontObject
         end
@@ -685,6 +738,29 @@ local NeverSaveFonts = {} do
                 end
             end
         end
+    end
+
+    table.clear(Library.FontMap)
+    table.clear(Library.FontOptions)
+
+    for _, Name in ipairs(NeverSaveFontOrder) do
+        local FontValue = NeverSaveFonts[Name] or NeverSaveEnumFallbacks[Name]
+        if FontValue then
+            Library:RegisterFont(Name, FontValue)
+        end
+    end
+
+    local PreferredFont = if typeof(Library.FontName) == "string" and Library.FontName ~= "" then Library.FontName else "Tahoma"
+    if not Library.FontMap[PreferredFont] then
+        PreferredFont = "Tahoma"
+    end
+
+    if not Library.FontMap[PreferredFont] then
+        PreferredFont = Library.FontOptions[1]
+    end
+
+    if PreferredFont then
+        Library:SetFont(PreferredFont, true)
     end
 end
 
@@ -855,7 +931,7 @@ function Library:CreateLabel(Properties, IsHud)
         BackgroundTransparency = 1;
         Font = Library.Font;
         TextColor3 = Library.FontColor;
-        TextSize = 16;
+        TextSize = tonumber(Library.FontSize) or 14;
         TextStrokeTransparency = 0;
     })
 
@@ -1115,14 +1191,21 @@ function Library:AddToolTip(InfoStr, DisabledInfoStr, HoverInstance)
     }
     local IsHovering = false
 
+    local function ApplyTooltipBounds()
+        local X, Y = Label.TextBounds.X, Label.TextBounds.Y
+        if X <= 0 or Y <= 0 then
+            X, Y = Library:GetTextBounds(Label.Text, Library.Font, Label.TextSize)
+        end
+
+        Tooltip.Size = UDim2.fromOffset(X + 5, Y + 4)
+        Label.Size = UDim2.fromOffset(X, Y)
+    end
+
     local function UpdateText(Text)
         if Text == nil then return end
 
-        local X, Y = Library:GetTextBounds(Text, Library.Font, 14 * DPIScale)
-
         Label.Text = Text
-        Tooltip.Size = UDim2.fromOffset(X + 5, Y + 4)
-        Label.Size = UDim2.fromOffset(X, Y)
+        ApplyTooltipBounds()
     end
 
     local function GiveSignal(Connection: RBXScriptConnection | RBXScriptSignal)
@@ -1133,6 +1216,8 @@ function Library:AddToolTip(InfoStr, DisabledInfoStr, HoverInstance)
 
         return Connection
     end
+
+    Library:BindTextBoundsToRefresh(Label, ApplyTooltipBounds)
 
     UpdateText(InfoStr)
 
@@ -1749,7 +1834,8 @@ do
                 Position = UDim2.new(1, 6, 0, -1);
                 TextSize = 14;
                 Text = "";
-                TextXAlignment = Enum.TextXAlignment.Left;
+                TextXAlignment = Enum.TextXAlignment.Center;
+                TextYAlignment = Enum.TextYAlignment.Center;
                 ZIndex = 111;
                 Parent = KeybindsToggleInner;
             })
@@ -2592,7 +2678,6 @@ do
                 Parent = DotsContainer;
             })
 
-            Library:Create("UICorner", { CornerRadius = UDim.new(0, Library.CornerRadius or 4), Parent = Dot });
             local OutlineStroke = Library:Create("UIStroke", { Color = Library.OutlineColor, Thickness = 1, Parent = Dot });
             Library:AddToRegistry(OutlineStroke, { Color = "OutlineColor" })
 
@@ -2670,8 +2755,9 @@ do
                 local BtnOuter = Library:Create("Frame", {
                     Size = size or UDim2.fromOffset(60, 20);
                     Position = pos;
-                    BackgroundColor3 = Color3.new(0, 0, 0);
+                    BackgroundColor3 = Library.OutlineColor;
                     BorderColor3 = Color3.new(0, 0, 0);
+                    BorderSizePixel = 0;
                     ZIndex = 19;
                     Parent = gradientHolder;
                 })
@@ -2680,8 +2766,7 @@ do
                     Size = UDim2.new(1, -2, 1, -2);
                     Position = UDim2.new(0, 1, 0, 1);
                     BackgroundColor3 = Library.MainColor;
-                    BorderColor3 = Library.OutlineColor;
-                    BorderMode = Enum.BorderMode.Inset;
+                    BorderSizePixel = 0;
                     ZIndex = 20;
                     Parent = BtnOuter;
                 })
@@ -2698,13 +2783,10 @@ do
                     Parent = BtnInner;
                 })
 
-                local BtnStroke = Library:Create("UIStroke", { Color = Library.OutlineColor, Thickness = 1, Parent = BtnInner })
-                Library:AddToRegistry(BtnStroke, { Color = "OutlineColor" })
-
                 -- no rounding for gradient buttons
-                Library:AddToRegistry(BtnOuter, { BorderColor3 = "Black" })
-                Library:AddToRegistry(BtnInner, { BackgroundColor3 = "MainColor"; BorderColor3 = "OutlineColor" })
-                Library:OnHighlight(BtnOuter, BtnOuter, { BorderColor3 = "AccentColor" }, { BorderColor3 = "Black" })
+                Library:AddToRegistry(BtnOuter, { BackgroundColor3 = "OutlineColor" })
+                Library:AddToRegistry(BtnInner, { BackgroundColor3 = "MainColor" })
+                Library:OnHighlight(BtnOuter, BtnOuter, { BackgroundColor3 = "AccentColor" }, { BackgroundColor3 = "OutlineColor" })
 
                 return BtnOuter
             end
@@ -2716,12 +2798,12 @@ do
                 BackgroundColor3 = Color3.new(1, 1, 1);
                 BorderColor3 = Library.OutlineColor;
                 BorderMode = Enum.BorderMode.Inset;
+                ClipsDescendants = true;
                 Position = UDim2.fromOffset(0, 0);
                 Size = UDim2.new(1, 0, 0, gradientBarHeight);
                 ZIndex = 19;
                 Parent = gradientHolder;
             })
-            -- no rounding for gradient bar
 
             GradientUI = Library:Create("UIGradient", { Parent = GradientBar })
             DisplayGradient = Library:Create("UIGradient", { Parent = DisplayFrame })
@@ -3407,12 +3489,17 @@ do
             })
         end
 
-        local DropdownArrow = Library:Create("ImageLabel", {
+        local DropdownArrow = Library:Create("TextLabel", {
             AnchorPoint = Vector2.new(0, 0.5);
             BackgroundTransparency = 1;
             Position = UDim2.new(1, -16, 0.5, 0);
-            Size = UDim2.new(0, 12, 0, 12);
-            Image = CustomImageManager.GetAsset("DropdownArrow");
+            Size = UDim2.new(0, 16, 0, 16);
+            Text = "+";
+            Font = Library.Font;
+            TextSize = 14;
+            TextColor3 = Color3.new(1, 1, 1);
+            TextXAlignment = Enum.TextXAlignment.Center;
+            TextYAlignment = Enum.TextYAlignment.Center;
             ZIndex = 8;
             Parent = DropdownInner;
         })
@@ -3493,8 +3580,8 @@ do
             ZIndex = 21;
             Parent = ListInner;
 
-            TopImage = "rbxasset://textures/ui/Scroll/scroll-middle.png",
-            BottomImage = "rbxasset://textures/ui/Scroll/scroll-middle.png",
+            TopImage = "",
+            BottomImage = "",
 
             ScrollBarThickness = 3,
             ScrollBarImageColor3 = Library.AccentColor,
@@ -3513,7 +3600,7 @@ do
 
         function Dropdown:UpdateColors()
             ItemList.TextColor3 = Dropdown.Disabled and Library.DisabledAccentColor or Color3.new(1, 1, 1)
-            DropdownArrow.ImageColor3 = Dropdown.Disabled and Library.DisabledAccentColor or Color3.new(1, 1, 1)
+            DropdownArrow.TextColor3 = Dropdown.Disabled and Library.DisabledAccentColor or Color3.new(1, 1, 1)
         end
 
         function Dropdown:GenerateDisplayText(SelectedValue)
@@ -3787,7 +3874,7 @@ do
             
             ListOuter.Visible = true
             Library.OpenedFrames[ListOuter] = true
-            DropdownArrow.Rotation = 180
+            DropdownArrow.Text = "-"
 
             Dropdown:Display()
             RecalculateListSize()
@@ -3806,7 +3893,7 @@ do
         
             ListOuter.Visible = false
             Library.OpenedFrames[ListOuter] = nil
-            DropdownArrow.Rotation = 0
+            DropdownArrow.Text = "+"
 
             Dropdown:Display()
             RecalculateListSize()
@@ -3998,7 +4085,7 @@ do
                 Parent = Container;
             })
 
-            Library:CreateLabel({
+            local DividerLabel = Library:CreateLabel({
                 AutomaticSize = Enum.AutomaticSize.X;
                 BackgroundTransparency = 1;
                 Position = UDim2.fromScale(0.5, 0.5);
@@ -4013,15 +4100,12 @@ do
                 RichText = true;
             })
 
-            local X = select(1, Library:GetTextBounds(Text, Library.Font, 14 * DPIScale))
-            local SizeX = math.floor(X / 2) + (10 * DPIScale)
-
             local LeftOuter = Library:Create("Frame", {
                 AnchorPoint = Vector2.new(0, 0.5);
                 BackgroundColor3 = Color3.new(0, 0, 0);
                 BorderColor3 = Color3.new(0, 0, 0);
                 Position = UDim2.fromScale(0, 0.5);
-                Size = UDim2.new(0.5, -SizeX, 0, 5);
+                Size = UDim2.new(0.5, -10, 0, 5);
                 ZIndex = 5;
                 Parent = DividerOuter;
             })
@@ -4039,7 +4123,7 @@ do
                 BackgroundColor3 = Color3.new(0, 0, 0);
                 BorderColor3 = Color3.new(0, 0, 0);
                 Position = UDim2.fromScale(1, 0.5);
-                Size = UDim2.new(0.5, -SizeX, 0, 5);
+                Size = UDim2.new(0.5, -10, 0, 5);
                 ZIndex = 5;
                 Parent = DividerOuter;
             })
@@ -4056,6 +4140,12 @@ do
             Library:AddToRegistry(LeftInner, { BackgroundColor3 = "MainColor"; BorderColor3 = "OutlineColor"; })
             Library:AddToRegistry(RightOuter, { BorderColor3 = "Black"; })
             Library:AddToRegistry(RightInner, { BackgroundColor3 = "MainColor"; BorderColor3 = "OutlineColor"; })
+
+            Library:BindTextBoundsToRefresh(DividerLabel, function()
+                local SizeX = math.floor(DividerLabel.TextBounds.X / 2) + (10 * DPIScale)
+                LeftOuter.Size = UDim2.new(0.5, -SizeX, 0, 5)
+                RightOuter.Size = UDim2.new(0.5, -SizeX, 0, 5)
+            end)
         else
             DividerOuter = Library:Create("Frame", {
                 BackgroundColor3 = Color3.new(0, 0, 0);
@@ -4134,8 +4224,11 @@ do
         })
 
         if Data.DoesWrap then
-            local Y = select(2, Library:GetTextBounds(Data.Text, Library.Font, 14 * DPIScale, Vector2.new(TextLabel.AbsoluteSize.X, math.huge)))
-            TextLabel.Size = UDim2.new(1, -4, 0, Y)
+            Library:BindTextBoundsToRefresh(TextLabel, function()
+                local WrappedHeight = math.max(15 * DPIScale, TextLabel.TextBounds.Y)
+                TextLabel.Size = UDim2.new(1, -4, 0, WrappedHeight)
+                Groupbox:Resize()
+            end)
         else
             Library:Create("UIListLayout", {
                 Padding = UDim.new(0, 4 * DPIScale);
@@ -4152,12 +4245,9 @@ do
         function Label:SetText(Text)
             TextLabel.Text = Text
 
-            if Data.DoesWrap then
-                local Y = select(2, Library:GetTextBounds(Text, Library.Font, 14 * DPIScale, Vector2.new(TextLabel.AbsoluteSize.X, math.huge)))
-                TextLabel.Size = UDim2.new(1, -4, 0, Y)
+            if not Data.DoesWrap then
+                Groupbox:Resize()
             end
-
-            Groupbox:Resize()
         end
 
         if (not Data.DoesWrap) then
@@ -5452,12 +5542,17 @@ do
             })
         end
 
-        local DropdownArrow = Library:Create("ImageLabel", {
+        local DropdownArrow = Library:Create("TextLabel", {
             AnchorPoint = Vector2.new(0, 0.5);
             BackgroundTransparency = 1;
             Position = UDim2.new(1, -16, 0.5, 0);
-            Size = UDim2.new(0, 12, 0, 12);
-            Image = CustomImageManager.GetAsset("DropdownArrow");
+            Size = UDim2.new(0, 16, 0, 16);
+            Text = "+";
+            Font = Library.Font;
+            TextSize = 14;
+            TextColor3 = Color3.new(1, 1, 1);
+            TextXAlignment = Enum.TextXAlignment.Center;
+            TextYAlignment = Enum.TextYAlignment.Center;
             ZIndex = 8;
             Parent = DropdownInner;
         })
@@ -5535,8 +5630,8 @@ do
             ZIndex = 21;
             Parent = ListInner;
 
-            TopImage = "rbxasset://textures/ui/Scroll/scroll-middle.png",
-            BottomImage = "rbxasset://textures/ui/Scroll/scroll-middle.png",
+            TopImage = "",
+            BottomImage = "",
 
             ScrollBarThickness = 3,
             ScrollBarImageColor3 = Library.AccentColor,
@@ -5559,7 +5654,7 @@ do
             end
 
             ItemList.TextColor3 = Dropdown.Disabled and Library.DisabledAccentColor or Color3.new(1, 1, 1)
-            DropdownArrow.ImageColor3 = Dropdown.Disabled and Library.DisabledAccentColor or Color3.new(1, 1, 1)
+            DropdownArrow.TextColor3 = Dropdown.Disabled and Library.DisabledAccentColor or Color3.new(1, 1, 1)
         end
 
         function Dropdown:Display()
@@ -5822,7 +5917,7 @@ do
 
             ListOuter.Visible = true
             Library.OpenedFrames[ListOuter] = true
-            DropdownArrow.Rotation = 180
+            DropdownArrow.Text = "-"
 
             RecalculateListSize()
         end
@@ -5840,7 +5935,7 @@ do
 
             ListOuter.Visible = false
             Library.OpenedFrames[ListOuter] = nil
-            DropdownArrow.Rotation = 0
+            DropdownArrow.Text = "+"
         end
 
         function Dropdown:OnChanged(Func)
@@ -6910,6 +7005,32 @@ do
     Library.KeybindFrame = KeybindOuter
     Library.KeybindContainer = KeybindContainer
     Library:MakeDraggable(KeybindOuter)
+
+    -- Center text in existing keybind entries and for future additions
+    local function _centerKeybindText(lbl)
+        if not lbl then return end
+        if not lbl.IsA then return end
+        pcall(function()
+            lbl.TextXAlignment = Enum.TextXAlignment.Center
+            lbl.TextYAlignment = Enum.TextYAlignment.Center
+        end)
+    end
+
+    for _, Frame in next, KeybindContainer:GetChildren() do
+        if Frame.IsA and Frame:IsA("Frame") then
+            for _, desc in next, Frame:GetDescendants() do
+                if desc.IsA and desc:IsA("TextLabel") then
+                    _centerKeybindText(desc)
+                end
+            end
+        end
+    end
+
+    Library:GiveSignal(KeybindContainer.DescendantAdded:Connect(function(desc)
+        if desc.IsA and desc:IsA("TextLabel") then
+            _centerKeybindText(desc)
+        end
+    end))
 end
 
 --// Watermark \\--
@@ -6966,8 +7087,10 @@ do
     local WatermarkLabel = Library:CreateLabel({
         Position = UDim2.new(0, 5, 0, 0);
         Size = UDim2.new(1, -4, 1, 0);
-        TextSize = 14;
-        TextXAlignment = Enum.TextXAlignment.Left;
+        TextSize = Library.FontSize;
+        Font = Library.Font;
+        TextXAlignment = Enum.TextXAlignment.Center;
+        TextYAlignment = Enum.TextYAlignment.Center;
         ZIndex = 203;
         Parent = InnerFrame;
     })
@@ -6976,16 +7099,41 @@ do
     Library.WatermarkText = WatermarkLabel
     Library:MakeDraggable(Library.Watermark)
 
+    Library:BindTextBoundsToRefresh(WatermarkLabel, function()
+        if Library.WatermarkText then
+            if Library.FontFace then
+                Library.WatermarkText.FontFace = Library.FontFace
+            else
+                Library.WatermarkText.Font = Library.Font
+            end
+
+            Library.WatermarkText.TextSize = ApplyTextSize(Library.FontSize)
+        end
+
+        local BoundTextSize = ApplyTextSize(Library.FontSize)
+        local X, Y = Library:GetTextBounds(WatermarkLabel.Text, Library.Font, BoundTextSize)
+        Library.Watermark.Size = UDim2.new(0, X + 15, 0, (Y * 1.5) + 3)
+    end)
+
     function Library:SetWatermarkVisibility(Bool)
         Library.Watermark.Visible = Bool
     end
 
     function Library:SetWatermark(Text)
-        local X, Y = Library:GetTextBounds(Text, Library.Font, 14)
-        Library.Watermark.Size = UDim2.new(0, X + 15, 0, (Y * 1.5) + 3)
-        Library:SetWatermarkVisibility(true)
+        if Library.WatermarkText then
+            if Library.FontFace then
+                Library.WatermarkText.FontFace = Library.FontFace
+            else
+                Library.WatermarkText.Font = Library.Font
+            end
 
-        Library.WatermarkText.Text = Text
+            Library.WatermarkText.TextSize = ApplyTextSize(Library.FontSize)
+            Library.WatermarkText.Text = Text
+
+            local X, Y = Library:GetTextBounds(Text, Library.Font, ApplyTextSize(Library.FontSize))
+            Library.Watermark.Size = UDim2.new(0, X + 15, 0, (Y * 1.5) + 3)
+            Library:SetWatermarkVisibility(true)
+        end
     end
 end
 
@@ -7060,8 +7208,9 @@ do
         end
 
         local Side = string.lower(Library.NotifySide)
-        local XSize, YSize = Library:GetTextBounds(Data.Description, Library.Font, 14)
-        YSize = YSize + 7
+        local NotifyFontSize = tonumber(Library.FontSize) or 14
+        local XSize, YSize = Library:GetTextBounds(Data.Description, Library.Font, NotifyFontSize * DPIScale)
+        YSize = math.max(YSize + 7, 18 * DPIScale)
 
         local NotifyOuter = Library:Create("Frame", {
             BorderColor3 = Color3.new(0, 0, 0);
@@ -7162,11 +7311,18 @@ do
             Size = UDim2.new(1, TextSizeOffsetX, 1, TextSizeOffsetY);
             Text = (Data.Title == "" and "" or "[" .. Data.Title .. "] ") .. tostring(Data.Description);
             TextXAlignment = Side == "left" and Enum.TextXAlignment.Left or Enum.TextXAlignment.Right;
-            TextSize = 14;
+            TextSize = NotifyFontSize;
             ZIndex = 11003;
             RichText = true;
             Parent = InnerFrame;
         })
+
+        local function GetNotificationSizeFromTextBounds()
+            local TextBounds = NotifyLabel.TextBounds
+            local Width = math.ceil(TextBounds.X + 8 + 4 + ExtraWidth)
+            local Height = math.max(math.ceil(TextBounds.Y + 7), math.ceil(18 * DPIScale))
+            return Width, Height
+        end
 
         local SideColor = Library:Create("Frame", {
             AnchorPoint = Side == "left" and Vector2.new(0, 0) or Vector2.new(1, 0);
@@ -7183,10 +7339,9 @@ do
         }, true)
 
         function Data:Resize()
-            XSize, YSize = Library:GetTextBounds(NotifyLabel.Text, Library.Font, 14)
-            YSize = YSize + 7
-            
-            pcall(NotifyOuter.TweenSize, NotifyOuter, UDim2.new(0, XSize * DPIScale + 8 + 4 + ExtraWidth, 0, YSize), "Out", "Quad", 0.4, true)
+            XSize, YSize = GetNotificationSizeFromTextBounds()
+
+            pcall(NotifyOuter.TweenSize, NotifyOuter, UDim2.new(0, XSize, 0, YSize), "Out", "Quad", 0.4, true)
         end
 
         function Data:ChangeTitle(NewText)
@@ -7223,6 +7378,14 @@ do
             NotifyOuter:Destroy()
         end
 
+        Library:GiveSignal(NotifyLabel:GetPropertyChangedSignal("TextBounds"):Connect(function()
+            if Data.Destroyed or not NotifyOuter.Parent then
+                return
+            end
+
+            Data:Resize()
+        end))
+
         Data:Resize()
 
         if Data.SoundId then
@@ -7235,7 +7398,7 @@ do
         end
 
         NotifyOuter.Visible = true
-        pcall(NotifyOuter.TweenSize, NotifyOuter, UDim2.new(0, XSize * DPIScale + 8 + 4 + ExtraWidth, 0, YSize), "Out", "Quad", 0.4, true)
+        pcall(NotifyOuter.TweenSize, NotifyOuter, UDim2.new(0, XSize, 0, YSize), "Out", "Quad", 0.4, true)
 
         task.delay(0.4, function()
             if Data.Persist then
@@ -7371,6 +7534,8 @@ function Library:CreateWindow(...)
         AutomaticCanvasSize = Enum.AutomaticSize.XY;
         ScrollBarThickness = 0;
         BackgroundTransparency = 1;
+        TopImage = "";
+        BottomImage = "";
         Position = UDim2.new(0, 8 - WindowInfo.TabPadding, 0, 4);
         Size = UDim2.new(1, -10, 0, 26);
         ZIndex = 1;
@@ -7972,23 +8137,36 @@ function Library:CreateWindow(...)
             Window.TabButtons = {}
         end
 
-        local function UpdateTabButtonSizes()
-            local MaxWidth = 0
-            for _, Btn in ipairs(Window.TabButtons) do
-                MaxWidth = math.max(MaxWidth, Btn.Size.X.Offset)
-            end
-            for _, Btn in ipairs(Window.TabButtons) do
-                Btn.Size = UDim2.new(0, MaxWidth, 0.85, 0)
-            end
+        if not Window.TabButtonData then
+            Window.TabButtonData = {}
         end
 
-        local TabButtonWidth = Library:GetTextBounds(Tab.Name, Library.Font, 16)
+        local TAB_BUTTON_EXTRA_WIDTH = 14
+
+        local function GetTabButtonWidthFromLabel(Label)
+            local LabelWidth = 0
+            if Label and Label.Parent then
+                LabelWidth = Label.TextBounds.X
+            end
+
+            return math.max(math.ceil(LabelWidth + TAB_BUTTON_EXTRA_WIDTH), TAB_BUTTON_EXTRA_WIDTH + 8)
+        end
+
+        local function UpdateTabButtonSizes()
+            local MaxWidth = 0
+            for _, Data in ipairs(Window.TabButtonData) do
+                MaxWidth = math.max(MaxWidth, GetTabButtonWidthFromLabel(Data.Label))
+            end
+            for _, Data in ipairs(Window.TabButtonData) do
+                Data.Button.Size = UDim2.new(0, MaxWidth, 0.85, 0)
+            end
+        end
 
         -- Create a button-like Outer + Inner structure to match other UI buttons
         local TabButton = Library:Create("Frame", {
             BackgroundColor3 = Color3.new(0, 0, 0);
             BorderColor3 = Color3.new(0, 0, 0);
-            Size = UDim2.new(0, TabButtonWidth + 8 + 4, 0.85, 0);
+            Size = UDim2.new(0, TAB_BUTTON_EXTRA_WIDTH + 8, 0.85, 0);
             ZIndex = 1;
             Parent = TabArea;
         })
@@ -8020,6 +8198,12 @@ function Library:CreateWindow(...)
         })
 
         table.insert(Window.TabButtons, TabButton)
+        table.insert(Window.TabButtonData, {
+            Button = TabButton,
+            Label = TabButtonLabel,
+        })
+
+        Library:BindTextBoundsToRefresh(TabButtonLabel, UpdateTabButtonSizes)
         UpdateTabButtonSizes()
 
         Library:AddToRegistry(TabButton, {
@@ -8029,6 +8213,7 @@ function Library:CreateWindow(...)
             BackgroundColor3 = "BackgroundColor";
             BorderColor3 = "OutlineColor";
         })
+        Library:AddToRegistry(TabButtonLabel, { TextColor3 = "FontColor" })
 
         -- Hover highlight for the tab outer frame
         Library:OnHighlight(TabButton, TabButton, { BorderColor3 = "AccentColor" }, { BorderColor3 = "Black" })
@@ -8083,6 +8268,8 @@ do
                 CanvasSize = UDim2.new(0, 0, 0, 0);
                 AutomaticCanvasSize = Enum.AutomaticSize.Y;
                 ScrollBarThickness = 3;
+                TopImage = "";
+                BottomImage = "";
                 ZIndex = 5;
                 Parent = TopBarInner;
             })
@@ -8295,6 +8482,10 @@ end
                 TabButtonInner.BackgroundColor3 = Library.MainColor
                 Library.RegistryMap[TabButtonInner].Properties.BackgroundColor3 = "MainColor"
             end
+            if TabButtonLabel then
+                TabButtonLabel.TextColor3 = Library.AccentColor
+                Library.RegistryMap[TabButtonLabel].Properties.TextColor3 = "AccentColor"
+            end
             TabFrame.Visible = true
 
             Tab:Resize()
@@ -8305,6 +8496,10 @@ end
             if TabButtonInner then
                 TabButtonInner.BackgroundColor3 = Library.BackgroundColor
                 Library.RegistryMap[TabButtonInner].Properties.BackgroundColor3 = "BackgroundColor"
+            end
+            if TabButtonLabel then
+                TabButtonLabel.TextColor3 = Library.FontColor
+                Library.RegistryMap[TabButtonLabel].Properties.TextColor3 = "FontColor"
             end
             TabFrame.Visible = false
         end
@@ -8322,20 +8517,8 @@ end
         function Tab:SetName(Name)
             if typeof(Name) == "string" then
                 Tab.Name = Name
-
-                local TabButtonWidth = Library:GetTextBounds(Tab.Name, Library.Font, 16)
-                TabButton.Size = UDim2.new(0, TabButtonWidth + 8 + 4, 0.85, 0)
                 TabButtonLabel.Text = Tab.Name
-
-                if Window.TabButtons then
-                    local MaxWidth = 0
-                    for _, Btn in ipairs(Window.TabButtons) do
-                        MaxWidth = math.max(MaxWidth, Btn.Size.X.Offset)
-                    end
-                    for _, Btn in ipairs(Window.TabButtons) do
-                        Btn.Size = UDim2.new(0, MaxWidth, 0.85, 0)
-                    end
-                end
+                UpdateTabButtonSizes()
             end
         end
 
@@ -8390,10 +8573,10 @@ end
             -- local GroupboxLabel = 
             Library:CreateLabel({
                 Size = UDim2.new(1, 0, 0, 18);
-                Position = UDim2.new(0, 4, 0, 2);
+                Position = UDim2.new(0, 0, 0, 2);
                 TextSize = 14;
                 Text = Info.Name;
-                TextXAlignment = Enum.TextXAlignment.Left;
+                TextXAlignment = Enum.TextXAlignment.Center;
                 ZIndex = 5;
                 Parent = BoxInner;
             })
@@ -8512,7 +8695,7 @@ end
 
                 local Button = Library:Create("Frame", {
                     BackgroundColor3 = Library.MainColor;
-                    BorderColor3 = Color3.new(0, 0, 0);
+                    BorderSizePixel = 0;
                     Size = UDim2.new(0.5, 0, 1, 0);
                     ZIndex = 6;
                     Parent = TabboxButtons;
