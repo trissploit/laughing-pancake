@@ -2419,7 +2419,7 @@ do
             PreviousValues.Transparency = ColorPicker.Transparency
 
             local callbackValue = Info.Gradient and GradientStops or ColorPicker.Value
-            if Info.Gradient and callbackValue then
+            if Info.Gradient and type(callbackValue) == 'table' then
                 table.sort(callbackValue, function(a, b)
                     return (tonumber(a and a.pos) or 0) < (tonumber(b and b.pos) or 0)
                 end)
