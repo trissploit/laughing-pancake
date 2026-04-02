@@ -2713,7 +2713,7 @@ do
                 local mouseX = math.clamp(Mouse.X, MinX, MaxX)
                 stop.pos = (mouseX - MinX) / math.max(1, MaxX - MinX)
                 UpdateGradientRender()
-                RenderStepped:Wait()
+                RunService.RenderStepped:Wait()
             end)
 
             return Dot
